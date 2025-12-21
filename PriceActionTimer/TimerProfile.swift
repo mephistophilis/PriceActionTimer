@@ -15,6 +15,7 @@ struct TimerProfile: Identifiable, Equatable, Codable {
     var isEnabled: Bool
     var watchStart: DateComponents
     var watchEnd: DateComponents
+    var enabledWeekdays: Set<Int> // 1 = Sunday, 2 = Monday, ..., 7 = Saturday
 
     init(
         id: UUID = UUID(),
@@ -23,7 +24,8 @@ struct TimerProfile: Identifiable, Equatable, Codable {
         autoRestart: Bool,
         isEnabled: Bool = true,
         watchStart: DateComponents = DateComponents(hour: 9, minute: 30),
-        watchEnd: DateComponents = DateComponents(hour: 16, minute: 0)
+        watchEnd: DateComponents = DateComponents(hour: 16, minute: 0),
+        enabledWeekdays: Set<Int> = [2, 3, 4, 5, 6] // Mon-Fri by default
     ) {
         self.id = id
         self.cycleDuration = cycleDuration
@@ -32,6 +34,7 @@ struct TimerProfile: Identifiable, Equatable, Codable {
         self.isEnabled = isEnabled
         self.watchStart = watchStart
         self.watchEnd = watchEnd
+        self.enabledWeekdays = enabledWeekdays
     }
 
     static let initial = TimerProfile(
@@ -40,7 +43,8 @@ struct TimerProfile: Identifiable, Equatable, Codable {
         autoRestart: true,
         isEnabled: true,
         watchStart: DateComponents(hour: 9, minute: 30),
-        watchEnd: DateComponents(hour: 16, minute: 0)
+        watchEnd: DateComponents(hour: 16, minute: 0),
+        enabledWeekdays: [2, 3, 4, 5, 6] // Mon-Fri
     )
 
     func timeRangeDescription(calendar: Calendar = .current) -> String {

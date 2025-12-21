@@ -9,7 +9,10 @@
       "Bash(perl -i -pe:*)",
       "Bash(killall:*)",
       "Bash(plutil:*)",
-      "Bash(/Users/mephisto/Library/Developer/Xcode/DerivedData/PriceActionTimer-cbtrxqunxvbrxagrghkafstrypyn/Build/Products/Debug/PriceActionTimer.app/Contents/MacOS/PriceActionTimer)"
+      "Bash(/Users/mephisto/Library/Developer/Xcode/DerivedData/PriceActionTimer-cbtrxqunxvbrxagrghkafstrypyn/Build/Products/Debug/PriceActionTimer.app/Contents/MacOS/PriceActionTimer)",
+      "Bash(defaults read:*)",
+      "Bash(python3:*)",
+      "Bash(defaults domains:*)"
     ]
   }
 }

@@ -25,12 +25,10 @@ final class TimerStore: ObservableObject {
 
     private var managers: [UUID: TimerManager] = [:]
     private var managerSubscriptions: [UUID: AnyCancellable] = [:]
-    private let storageURL: URL = {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        let dir = base?.appendingPathComponent("PriceActionTimer", isDirectory: true)
-        let url = dir?.appendingPathComponent("profiles.json")
-        return url ?? URL(fileURLWithPath: "/tmp/PriceActionTimer-profiles.json")
-    }()
+    private let userDefaults = UserDefaults.standard
+    private let profilesKey = "com.m.PriceActionTimer.profiles"
+    private let selectedProfileKey = "com.m.PriceActionTimer.selectedProfile"
+
     var selectedProfile: TimerProfile? {
         guard let selectedProfileID else { return nil }
         return profiles.first(where: { $0.id == selectedProfileID && $0.isEnabled })
@@ -40,13 +38,24 @@ final class TimerStore: ObservableObject {
     }
 
     init(profiles: [TimerProfile]? = nil) {
-        let initialProfiles = profiles ?? Self.loadProfiles(from: storageURL) ?? [TimerProfile.initial]
+        // Try to migrate from old file-based storage if needed
+        Self.migrateFromFileStorageIfNeeded()
+
+        let initialProfiles = profiles ?? Self.loadProfiles() ?? [TimerProfile.initial]
         self.profiles = initialProfiles.map {
             var copy = $0
             copy.autoRestart = true
             return copy
         }
-        self.selectedProfileID = initialProfiles.first(where: { $0.isEnabled })?.id
+
+        // Load selected profile ID from UserDefaults
+        if let savedID = userDefaults.string(forKey: selectedProfileKey),
+           let uuid = UUID(uuidString: savedID) {
+            self.selectedProfileID = uuid
+        } else {
+            self.selectedProfileID = initialProfiles.first(where: { $0.isEnabled })?.id
+        }
+
         syncManagersWithProfiles()
         refreshSelectionAfterChange()
         // Don't call start() here - syncManagersWithProfiles already started the managers
@@ -59,7 +68,8 @@ final class TimerStore: ObservableObject {
             autoRestart: true,
             isEnabled: true,
             watchStart: DateComponents(hour: 9, minute: 30),
-            watchEnd: DateComponents(hour: 16, minute: 0)
+            watchEnd: DateComponents(hour: 16, minute: 0),
+            enabledWeekdays: [2, 3, 4, 5, 6] // Mon-Fri
         )
         profiles.append(profile)
         selectedProfileID = profile.id
@@ -99,6 +109,13 @@ final class TimerStore: ObservableObject {
         } else {
             selectedProfileID = profiles.first(where: { $0.isEnabled })?.id
         }
+
+        // Save selected profile ID to UserDefaults
+        if let selectedProfileID {
+            userDefaults.set(selectedProfileID.uuidString, forKey: selectedProfileKey)
+        } else {
+            userDefaults.removeObject(forKey: selectedProfileKey)
+        }
     }
 
     private func ensureSelection() {
@@ -109,59 +126,98 @@ final class TimerStore: ObservableObject {
 
     func manager(for id: UUID?) -> TimerManager? {
         guard let id else { return nil }
-        if let existing = managers[id] { return existing }
-        let manager = TimerManager()
-        managers[id] = manager
-
-        // Set up subscription for the new manager
-        managerSubscriptions[id] = manager.objectWillChange.sink { [weak self] _ in
-            self?.objectWillChange.send()
-        }
-
-        return manager
+        return managers[id]
     }
 
     private func syncManagersWithProfiles() {
-        let ids = Set(profiles.map(\.id))
-        let stale = managers.keys.filter { !ids.contains($0) }
-        stale.forEach { managers[$0] = nil }
-        stale.forEach { managerSubscriptions[$0] = nil }
+        let profileIDs = Set(profiles.map(\.id))
 
-        var needsRefresh = false
+        // Remove managers for deleted profiles
+        let staleIDs = managers.keys.filter { !profileIDs.contains($0) }
+        for staleID in staleIDs {
+            managers[staleID]?.stop()
+            managers[staleID] = nil
+            managerSubscriptions[staleID] = nil
+        }
+
+        // Create or update managers for each profile
         for profile in profiles {
-            let manager = manager(for: profile.id) ?? TimerManager()
-            managers[profile.id] = manager
+            let manager: TimerManager
+
+            if let existing = managers[profile.id] {
+                // Manager already exists
+                manager = existing
+            } else {
+                // Create new manager
+                manager = TimerManager()
+                managers[profile.id] = manager
+
+                // Set up subscription once for new manager
+                managerSubscriptions[profile.id] = manager.objectWillChange.sink { [weak self] _ in
+                    self?.objectWillChange.send()
+                }
+            }
+
+            // Apply profile settings (only updates properties, doesn't restart)
             manager.apply(profile: profile)
 
+            // Control manager state based on profile enabled state
             if profile.isEnabled {
-                manager.start()
+                // Only start if idle (prevents restarting running timers)
+                if manager.phase == .idle {
+                    manager.start()
+                }
             } else {
+                // Stop if disabled
                 manager.stop()
             }
-            needsRefresh = true
+        }
 
-            managerSubscriptions[profile.id] = manager.objectWillChange.sink { [weak self] _ in
-                self?.objectWillChange.send()
-            }
-        }
-        if needsRefresh {
-            objectWillChange.send()
-        }
+        objectWillChange.send()
     }
 
     private func saveProfiles() {
         do {
-            let dir = storageURL.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let data = try JSONEncoder().encode(profiles)
-            try data.write(to: storageURL, options: .atomic)
+            userDefaults.set(data, forKey: profilesKey)
         } catch {
             print("Failed to save profiles: \(error)")
         }
     }
 
-    private static func loadProfiles(from url: URL) -> [TimerProfile]? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
+    private static func loadProfiles() -> [TimerProfile]? {
+        guard let data = UserDefaults.standard.data(forKey: "com.m.PriceActionTimer.profiles") else {
+            return nil
+        }
         return try? JSONDecoder().decode([TimerProfile].self, from: data)
+    }
+
+    private static func migrateFromFileStorageIfNeeded() {
+        let userDefaults = UserDefaults.standard
+        let profilesKey = "com.m.PriceActionTimer.profiles"
+        let migrationKey = "com.m.PriceActionTimer.migratedFromFile"
+
+        // Skip if already migrated or data exists in UserDefaults
+        if userDefaults.bool(forKey: migrationKey) || userDefaults.data(forKey: profilesKey) != nil {
+            return
+        }
+
+        // Try to load from old file location
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        let dir = base?.appendingPathComponent("PriceActionTimer", isDirectory: true)
+        guard let url = dir?.appendingPathComponent("profiles.json"),
+              let data = try? Data(contentsOf: url),
+              let profiles = try? JSONDecoder().decode([TimerProfile].self, from: data) else {
+            userDefaults.set(true, forKey: migrationKey)
+            return
+        }
+
+        // Migrate to UserDefaults
+        if let encodedData = try? JSONEncoder().encode(profiles) {
+            userDefaults.set(encodedData, forKey: profilesKey)
+            print("Migrated \(profiles.count) profiles from file storage to UserDefaults")
+        }
+
+        userDefaults.set(true, forKey: migrationKey)
     }
 }

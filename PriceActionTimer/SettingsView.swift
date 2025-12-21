@@ -149,6 +149,18 @@ struct SettingsView: View {
                     }
                 }
 
+                SettingsCard(title: "Schedule", systemImage: "calendar") {
+                    SettingsRow(title: "Active days") {
+                        VStack(alignment: .trailing, spacing: 8) {
+                            WeekdayPicker(selectedWeekdays: Binding(
+                                get: { profile.wrappedValue.enabledWeekdays },
+                                set: { profile.wrappedValue.enabledWeekdays = $0 }
+                            ))
+                        }
+                        .frame(width: controlWidth, alignment: .trailing)
+                    }
+                }
+
                 SettingsCard(title: "Danger", systemImage: "exclamationmark.triangle") {
                     SettingsRow(title: "Delete timer") {
                         Button(role: .destructive) {
@@ -325,5 +337,55 @@ private struct SettingsRow<Content: View>: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 4)
+    }
+}
+
+private struct WeekdayPicker: View {
+    @Binding var selectedWeekdays: Set<Int>
+
+    private let weekdays: [(Int, String)] = [
+        (2, "Mon"),
+        (3, "Tue"),
+        (4, "Wed"),
+        (5, "Thu"),
+        (6, "Fri"),
+        (7, "Sat"),
+        (1, "Sun")
+    ]
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(weekdays, id: \.0) { weekday in
+                WeekdayButton(
+                    day: weekday.1,
+                    isSelected: selectedWeekdays.contains(weekday.0)
+                ) {
+                    if selectedWeekdays.contains(weekday.0) {
+                        selectedWeekdays.remove(weekday.0)
+                    } else {
+                        selectedWeekdays.insert(weekday.0)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct WeekdayButton: View {
+    let day: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(day)
+                .font(.caption)
+                .fontWeight(isSelected ? .semibold : .regular)
+                .frame(width: 30, height: 28)
+                .background(isSelected ? Color.accentColor : Color.gray.opacity(0.2))
+                .foregroundColor(isSelected ? .white : .primary)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }

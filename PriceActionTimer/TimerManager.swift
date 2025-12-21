@@ -47,6 +47,7 @@ final class TimerManager: ObservableObject {
     @Published private(set) var remainingTime: TimeInterval = 60
     @Published private(set) var phase: Phase = .idle
     private var profileName: String = "Timer"
+    private var enabledWeekdays: Set<Int> = [2, 3, 4, 5, 6] // Mon-Fri default
 
     private var timer: DispatchSourceTimer?
     private var deadline: Date?
@@ -64,11 +65,17 @@ final class TimerManager: ObservableObject {
         watchStart = profile.watchStart
         watchEnd = profile.watchEnd
         profileName = profile.generatedName()
+        enabledWeekdays = profile.enabledWeekdays
 
         // Don't stop - let syncManagersWithProfiles handle start/stop
     }
 
     func start() {
+        // Don't restart if already running
+        if phase != .idle {
+            return
+        }
+
         warned = false
         let now = Date()
         let window = currentWindow(from: now)
@@ -151,6 +158,14 @@ final class TimerManager: ObservableObject {
         }
 
         let now = Date()
+
+        // Check if current weekday is enabled
+        let weekday = calendar.component(.weekday, from: now)
+        if !enabledWeekdays.contains(weekday) {
+            stop()
+            remainingTime = cycleDuration
+            return
+        }
 
         // Check if outside market hours
         if let marketEnd, now >= marketEnd {
