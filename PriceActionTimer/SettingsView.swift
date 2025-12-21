@@ -19,8 +19,11 @@ struct SettingsView: View {
         NavigationSplitView {
             List(selection: $selection) {
                 ForEach(timerStore.profiles) { profile in
-                    SettingsListRow(profile: profile)
-                        .tag(profile.id)
+                    SettingsListRow(
+                        profile: profile,
+                        isRunning: timerStore.manager(for: profile.id)?.phase != .idle
+                    )
+                    .tag(profile.id)
                 }
                 .onDelete(perform: timerStore.removeProfiles)
             }
@@ -272,11 +275,12 @@ struct SettingsView: View {
 
 private struct SettingsListRow: View {
     let profile: TimerProfile
+    let isRunning: Bool
 
     var body: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(profile.isEnabled ? Color.green : Color.gray)
+                .fill(isRunning ? Color.green : Color.gray)
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 4) {
                 Text(cycleName())
