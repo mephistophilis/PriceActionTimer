@@ -32,6 +32,9 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		23958C802EF7971300732FFA /* PriceActionTimer */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				23958CA92EF7971400732FFA /* Exceptions for "PriceActionTimer" folder in "PriceActionTimer" target */,
+			);
 			path = PriceActionTimer;
 			sourceTree = "<group>";
 		};
@@ -46,6 +49,16 @@
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		23958CA92EF7971400732FFA /* Exceptions for "PriceActionTimer" folder in "PriceActionTimer" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 23958C7D2EF7971300732FFA /* PriceActionTimer */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		23958C7B2EF7971300732FFA /* Frameworks */ = {
