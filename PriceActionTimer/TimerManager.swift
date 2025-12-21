@@ -127,6 +127,9 @@ final class TimerManager: ObservableObject {
         if minutes == 0 {
             return "\(secs)s"
         }
+        if secs == 0 {
+            return "\(minutes)m"
+        }
         return "\(minutes)m \(secs)s"
     }
 
@@ -162,8 +165,8 @@ final class TimerManager: ObservableObject {
         if interval <= warningLeadTime, !warned {
             warned = true
             phase = .warning
-            let body = "Current cycle ends in \(formattedWarningLength()). Cycle length: \(formattedCycleLength())."
-            notifyUser(title: "PriceAction Reminder", body: body)
+            let remaining = formattedWarningLength()
+            notifyUser(title: "Timer ending soon", duration: formattedCycleLength(), remaining: remaining)
         }
 
         if interval <= 0 {
@@ -229,20 +232,20 @@ final class TimerManager: ObservableObject {
         return nextBoundary
     }
 
-    private func notifyUser(title: String, body: String) {
-        TimerNotificationAggregator.shared.enqueue(title: title, timerName: profileName, body: body)
+    private func notifyUser(title: String, duration: String, remaining: String) {
+        TimerNotificationAggregator.shared.enqueue(title: title, duration: duration, remaining: remaining)
     }
 }
 
 private final class TimerNotificationAggregator {
     static let shared = TimerNotificationAggregator()
-    private var pending: [(title: String, timerName: String, body: String)] = []
+    private var pending: [(title: String, duration: String, remaining: String)] = []
     private var workItem: DispatchWorkItem?
     private let queue = DispatchQueue(label: "timer.notification.aggregator", qos: .userInitiated)
 
-    func enqueue(title: String, timerName: String, body: String) {
+    func enqueue(title: String, duration: String, remaining: String) {
         queue.async {
-            self.pending.append((title, timerName, body))
+            self.pending.append((title, duration, remaining))
             self.scheduleSend()
         }
     }
@@ -259,17 +262,20 @@ private final class TimerNotificationAggregator {
     private func sendCombined() {
         let notifications = pending
         pending.removeAll()
-        guard !notifications.isEmpty else { return}
+        guard !notifications.isEmpty else { return }
 
         let content = UNMutableNotificationContent()
+
         if notifications.count == 1, let first = notifications.first {
             content.title = first.title
-            content.body = "\(first.timerName): \(first.body)"
+            content.body = "\(first.duration) cycle - \(first.remaining) left"
         } else {
+            // Multiple timers: group by remaining time
+            let items = notifications.map { "\($0.duration) (\($0.remaining))" }.joined(separator: ", ")
             content.title = "Timers ending soon"
-            let lines = notifications.map { "• \($0.timerName): \($0.body)" }
-            content.body = lines.joined(separator: "\n")
+            content.body = items
         }
+
         content.sound = .default
         content.interruptionLevel = .timeSensitive
 

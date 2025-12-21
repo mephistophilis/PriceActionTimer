@@ -4,7 +4,12 @@
       "Bash(xcodebuild:*)",
       "Bash(open:*)",
       "Bash(log show:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(xcrun xcodebuild:*)",
+      "Bash(perl -i -pe:*)",
+      "Bash(killall:*)",
+      "Bash(plutil:*)",
+      "Bash(/Users/mephisto/Library/Developer/Xcode/DerivedData/PriceActionTimer-cbtrxqunxvbrxagrghkafstrypyn/Build/Products/Debug/PriceActionTimer.app/Contents/MacOS/PriceActionTimer)"
     ]
   }
 }
