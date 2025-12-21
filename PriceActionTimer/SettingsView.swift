@@ -246,54 +246,34 @@ private struct SettingsListRow: View {
     let profile: TimerProfile
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(profile.generatedName())
-                .font(.headline)
-                .lineLimit(2)
-            HStack(spacing: 6) {
-                Chip(text: formatted(time: profile.watchStart))
-                Image(systemName: "arrow.right")
+        HStack(spacing: 8) {
+            Circle()
+                .fill(profile.isEnabled ? Color.green : Color.gray)
+                .frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(cycleName())
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+                Text(profile.timeRangeDescription())
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Chip(text: formatted(time: profile.watchEnd))
-                Spacer()
-            }
-            .padding(.top, 2)
-            HStack {
-                Text("\(formatDuration(profile.cycleDuration)) · Warn \(Int(profile.warningLeadTime))s · Looping\(profile.isEnabled ? "" : " · Disabled")")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer()
+                    .lineLimit(1)
             }
         }
     }
 
-    private func formatted(time: DateComponents) -> String {
-        guard let date = Calendar.current.date(from: time) else { return "--:--" }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
-    }
-
-    private struct Chip: View {
-        let text: String
-        var body: some View {
-            Text(text)
-                .font(.caption)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(Color.accentColor.opacity(0.12)))
+    private func cycleName() -> String {
+        let minutes = Int(profile.cycleDuration) / 60
+        let seconds = Int(profile.cycleDuration) % 60
+        let cycle: String
+        if minutes > 0 && seconds > 0 {
+            cycle = "\(minutes)m\(seconds)s"
+        } else if minutes > 0 {
+            cycle = "\(minutes)m"
+        } else {
+            cycle = "\(seconds)s"
         }
-    }
-
-    private func formatDuration(_ seconds: TimeInterval) -> String {
-        let rounded = Int(max(seconds, 0))
-        let minutes = rounded / 60
-        let secs = rounded % 60
-        if minutes == 0 {
-            return "\(secs)s"
-        }
-        return "\(minutes)m \(secs)s"
+        return "\(cycle) cycle"
     }
 }
 
