@@ -49,13 +49,11 @@ final class TimerManager: ObservableObject {
     @Published var autoRestart = true
     @Published private(set) var remainingTime: TimeInterval = 60
     @Published private(set) var phase: Phase = .idle
-    private var profileName: String = "Timer"
     private var enabledWeekdays: Set<Int> = [2, 3, 4, 5, 6] // Mon-Fri default
 
     private var timer: DispatchSourceTimer?
     private var deadline: Date?
     private var warned = false
-    private var marketStart: Date?
     private var marketEnd: Date?
     private var watchStart = DateComponents(hour: 9, minute: 30)
     private var watchEnd = DateComponents(hour: 16, minute: 0)
@@ -72,7 +70,6 @@ final class TimerManager: ObservableObject {
         autoRestart = true
         watchStart = profile.watchStart
         watchEnd = profile.watchEnd
-        profileName = profile.generatedName()
         enabledWeekdays = profile.enabledWeekdays
         timezone = profile.timezone
 
@@ -126,7 +123,6 @@ final class TimerManager: ObservableObject {
         warned = false
         let nextDeadline = nextCycleDeadline(from: now, window: window)
         deadline = nextDeadline
-        marketStart = window.start
         marketEnd = window.end
         remainingTime = max(0, nextDeadline.timeIntervalSince(now))
         phase = .running
@@ -140,7 +136,6 @@ final class TimerManager: ObservableObject {
         warned = false
         deadline = nil
         remainingTime = cycleDuration
-        marketStart = nil
         marketEnd = nil
     }
 
@@ -236,8 +231,6 @@ final class TimerManager: ObservableObject {
         if interval <= 0 {
             warned = false
             if autoRestart {
-                let window = currentWindow(from: now)
-                self.marketEnd = window.end
                 self.deadline = nextCycleDeadline(from: now, window: window)
                 remainingTime = max(0, self.deadline?.timeIntervalSince(now) ?? cycleDuration)
                 phase = .running

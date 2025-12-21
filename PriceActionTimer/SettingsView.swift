@@ -214,7 +214,7 @@ struct SettingsView: View {
             set: { newValue in
                 if newValue == "custom" {
                     if let match = presets.first(where: { abs($0 - profile.wrappedValue.cycleDuration) < 0.1 }) {
-                        profile.wrappedValue.cycleDuration = max(15, match + 15)
+                        profile.wrappedValue.cycleDuration = max(60, match + 60)
                         profile.wrappedValue.warningLeadTime = min(profile.wrappedValue.warningLeadTime, profile.wrappedValue.cycleDuration)
                     }
                     return

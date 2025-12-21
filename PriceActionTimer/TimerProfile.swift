@@ -11,7 +11,6 @@ struct TimerProfile: Identifiable, Equatable, Codable {
     let id: UUID
     var cycleDuration: TimeInterval
     var warningLeadTime: TimeInterval
-    var autoRestart: Bool
     var isEnabled: Bool
     var watchStart: DateComponents
     var watchEnd: DateComponents
@@ -26,7 +25,6 @@ struct TimerProfile: Identifiable, Equatable, Codable {
         id: UUID = UUID(),
         cycleDuration: TimeInterval,
         warningLeadTime: TimeInterval,
-        autoRestart: Bool,
         isEnabled: Bool = true,
         watchStart: DateComponents = DateComponents(hour: 9, minute: 30),
         watchEnd: DateComponents = DateComponents(hour: 16, minute: 0),
@@ -36,7 +34,6 @@ struct TimerProfile: Identifiable, Equatable, Codable {
         self.id = id
         self.cycleDuration = cycleDuration
         self.warningLeadTime = warningLeadTime
-        self.autoRestart = autoRestart
         self.isEnabled = isEnabled
         self.watchStart = watchStart
         self.watchEnd = watchEnd
@@ -47,7 +44,6 @@ struct TimerProfile: Identifiable, Equatable, Codable {
     static let initial = TimerProfile(
         cycleDuration: 60,
         warningLeadTime: 10,
-        autoRestart: true,
         isEnabled: true,
         watchStart: DateComponents(hour: 9, minute: 30),
         watchEnd: DateComponents(hour: 16, minute: 0),

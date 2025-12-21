@@ -42,11 +42,7 @@ final class TimerStore: ObservableObject {
         Self.migrateFromFileStorageIfNeeded()
 
         let initialProfiles = profiles ?? Self.loadProfiles() ?? [TimerProfile.initial]
-        self.profiles = initialProfiles.map {
-            var copy = $0
-            copy.autoRestart = true
-            return copy
-        }
+        self.profiles = initialProfiles
 
         // Load selected profile ID from UserDefaults
         if let savedID = userDefaults.string(forKey: selectedProfileKey),
@@ -58,14 +54,12 @@ final class TimerStore: ObservableObject {
 
         syncManagersWithProfiles()
         refreshSelectionAfterChange()
-        // Don't call start() here - syncManagersWithProfiles already started the managers
     }
 
     func addProfile() {
         let profile = TimerProfile(
             cycleDuration: 60,
             warningLeadTime: 10,
-            autoRestart: true,
             isEnabled: true,
             watchStart: DateComponents(hour: 9, minute: 30),
             watchEnd: DateComponents(hour: 16, minute: 0),
@@ -83,12 +77,6 @@ final class TimerStore: ObservableObject {
             profiles = [TimerProfile.initial]
         }
         refreshSelectionAfterChange()
-    }
-
-    func start() {
-        ensureSelection()
-        syncManagersWithProfiles()
-        objectWillChange.send()
     }
 
     func stop() {
