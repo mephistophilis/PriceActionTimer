@@ -69,7 +69,8 @@ final class TimerStore: ObservableObject {
             isEnabled: true,
             watchStart: DateComponents(hour: 9, minute: 30),
             watchEnd: DateComponents(hour: 16, minute: 0),
-            enabledWeekdays: [2, 3, 4, 5, 6] // Mon-Fri
+            enabledWeekdays: [2, 3, 4, 5, 6], // Mon-Fri
+            timezoneIdentifier: TimeZone.current.identifier
         )
         profiles.append(profile)
         selectedProfileID = profile.id

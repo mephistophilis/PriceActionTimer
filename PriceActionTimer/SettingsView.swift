@@ -150,6 +150,15 @@ struct SettingsView: View {
                 }
 
                 SettingsCard(title: "Schedule", systemImage: "calendar") {
+                    SettingsRow(title: "Timezone") {
+                        TimezonePicker(selectedTimezone: Binding(
+                            get: { profile.wrappedValue.timezoneIdentifier },
+                            set: { profile.wrappedValue.timezoneIdentifier = $0 }
+                        ))
+                        .frame(width: controlWidth, alignment: .trailing)
+                    }
+
+                    Divider().padding(.leading, 12)
                     SettingsRow(title: "Active days") {
                         VStack(alignment: .trailing, spacing: 8) {
                             WeekdayPicker(selectedWeekdays: Binding(
@@ -387,5 +396,94 @@ private struct WeekdayButton: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct TimezonePicker: View {
+    @Binding var selectedTimezone: String
+
+    // Common timezones for quick selection (before deduplication)
+    private let baseCommonTimezones: [(String, String)] = [
+        ("Local", TimeZone.current.identifier),
+        ("New York (EST)", "America/New_York"),
+        ("Chicago (CST)", "America/Chicago"),
+        ("Los Angeles (PST)", "America/Los_Angeles"),
+        ("London (GMT)", "Europe/London"),
+        ("Frankfurt (CET)", "Europe/Berlin"),
+        ("Hong Kong (HKT)", "Asia/Hong_Kong"),
+        ("Tokyo (JST)", "Asia/Tokyo"),
+        ("Shanghai (CST)", "Asia/Shanghai"),
+        ("Singapore (SGT)", "Asia/Singapore"),
+        ("Sydney (AEDT)", "Australia/Sydney"),
+    ]
+
+    // Deduplicated common timezones
+    private var commonTimezones: [(String, String)] {
+        let currentTZ = TimeZone.current.identifier
+        var seen = Set<String>()
+        var result: [(String, String)] = []
+
+        for (label, identifier) in baseCommonTimezones {
+            // Skip if already seen
+            if seen.contains(identifier) {
+                continue
+            }
+
+            // Add Local first
+            if label == "Local" {
+                result.append((label, identifier))
+                seen.insert(identifier)
+            } else {
+                // Skip if this timezone is same as Local (already shown)
+                if identifier == currentTZ {
+                    continue
+                }
+                result.append((label, identifier))
+                seen.insert(identifier)
+            }
+        }
+
+        return result
+    }
+
+    private var allTimezones: [(String, String)] {
+        // Get identifiers already in common list
+        let commonIdentifiers = Set(commonTimezones.map { $0.1 })
+
+        // Filter out common timezones and Local timezone from all timezones
+        let filtered = TimeZone.knownTimeZoneIdentifiers
+            .filter { identifier in
+                // Exclude if in common list
+                if commonIdentifiers.contains(identifier) {
+                    return false
+                }
+                return true
+            }
+            .sorted()
+            .map { identifier -> (String, String) in
+                let tz = TimeZone(identifier: identifier)
+                let abbreviation = tz?.abbreviation() ?? ""
+                let displayName = identifier.replacingOccurrences(of: "_", with: " ")
+                return ("\(displayName) (\(abbreviation))", identifier)
+            }
+        return filtered
+    }
+
+    var body: some View {
+        Picker("", selection: $selectedTimezone) {
+            // Common timezones section (deduplicated)
+            ForEach(commonTimezones, id: \.1) { timezone in
+                Text(timezone.0).tag(timezone.1)
+            }
+
+            Divider()
+
+            // All other timezones
+            ForEach(allTimezones, id: \.1) { timezone in
+                Text(timezone.0).tag(timezone.1)
+            }
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
     }
 }

@@ -12,7 +12,8 @@
       "Bash(/Users/mephisto/Library/Developer/Xcode/DerivedData/PriceActionTimer-cbtrxqunxvbrxagrghkafstrypyn/Build/Products/Debug/PriceActionTimer.app/Contents/MacOS/PriceActionTimer)",
       "Bash(defaults read:*)",
       "Bash(python3:*)",
-      "Bash(defaults domains:*)"
+      "Bash(defaults domains:*)",
+      "Bash(swift:*)"
     ]
   }
 }

@@ -56,7 +56,12 @@ final class TimerManager: ObservableObject {
     private var marketEnd: Date?
     private var watchStart = DateComponents(hour: 9, minute: 30)
     private var watchEnd = DateComponents(hour: 16, minute: 0)
-    private var calendar: Calendar { Calendar.current }
+    private var timezone: TimeZone = .current
+    private var calendar: Calendar {
+        var cal = Calendar.current
+        cal.timeZone = timezone
+        return cal
+    }
 
     func apply(profile: TimerProfile) {
         cycleDuration = max(15, profile.cycleDuration)
@@ -66,6 +71,7 @@ final class TimerManager: ObservableObject {
         watchEnd = profile.watchEnd
         profileName = profile.generatedName()
         enabledWeekdays = profile.enabledWeekdays
+        timezone = profile.timezone
 
         // Don't stop - let syncManagersWithProfiles handle start/stop
     }
