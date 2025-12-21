@@ -23,8 +23,11 @@ final class TimerManager: ObservableObject {
 
     @Published var cycleDuration: TimeInterval = 60 {
         didSet {
-            if cycleDuration < 15 {
-                cycleDuration = 15
+            if cycleDuration < 60 {
+                cycleDuration = 60
+            }
+            if cycleDuration > 86400 {
+                cycleDuration = 86400
             }
             if phase == .idle {
                 remainingTime = cycleDuration
@@ -64,7 +67,7 @@ final class TimerManager: ObservableObject {
     }
 
     func apply(profile: TimerProfile) {
-        cycleDuration = max(15, profile.cycleDuration)
+        cycleDuration = min(max(60, profile.cycleDuration), 86400)
         warningLeadTime = min(max(3, profile.warningLeadTime), cycleDuration)
         autoRestart = true
         watchStart = profile.watchStart

@@ -109,10 +109,10 @@ struct SettingsView: View {
                                 Stepper(value: Binding(
                                     get: { profile.wrappedValue.cycleDuration },
                                     set: { newValue in
-                                        profile.wrappedValue.cycleDuration = max(15, newValue)
+                                        profile.wrappedValue.cycleDuration = min(max(60, newValue), 86400)
                                         profile.wrappedValue.warningLeadTime = min(profile.wrappedValue.warningLeadTime, profile.wrappedValue.cycleDuration)
                                     }
-                                ), in: 15...3600, step: 15) {
+                                ), in: 60...86400, step: 60) {
                                     Text(format(seconds: profile.wrappedValue.cycleDuration))
                                 }
                                 .frame(width: controlWidth, alignment: .trailing)
