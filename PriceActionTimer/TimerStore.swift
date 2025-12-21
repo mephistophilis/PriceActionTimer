@@ -192,18 +192,31 @@ final class TimerStore: ObservableObject {
 
     private func refreshSelectionAfterChange() {
         saveProfiles()
+
+        // Determine what the new selection should be
+        let newSelection: UUID?
         if let currentSelection = selectedProfileID {
             if let current = profiles.first(where: { $0.id == currentSelection }) {
-                if !current.isEnabled {
-                    selectedProfileID = profiles.first(where: { $0.isEnabled })?.id
-                    return
+                if current.isEnabled {
+                    // Current selection is still valid
+                    newSelection = currentSelection
+                } else {
+                    // Current profile is disabled, find another
+                    newSelection = profiles.first(where: { $0.isEnabled })?.id
                 }
             } else {
-                selectedProfileID = profiles.first(where: { $0.isEnabled })?.id
-                return
+                // Current profile was deleted, find another
+                newSelection = profiles.first(where: { $0.isEnabled })?.id
             }
         } else {
-            selectedProfileID = profiles.first(where: { $0.isEnabled })?.id
+            // No current selection, find one
+            newSelection = profiles.first(where: { $0.isEnabled })?.id
+        }
+
+        // Only update if different to avoid infinite recursion
+        if newSelection != selectedProfileID {
+            selectedProfileID = newSelection
+            return
         }
 
         // Save selected profile ID to UserDefaults

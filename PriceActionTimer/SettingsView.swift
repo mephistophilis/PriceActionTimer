@@ -92,7 +92,7 @@ struct SettingsView: View {
                 }
 
                 let presets: [TimeInterval] = [60, 180, 300, 900]
-                SettingsCard(title: "Time", systemImage: "clock") {
+                SettingsCard(title: "Timer", systemImage: "clock") {
                     SettingsRow(title: "Cycle") {
                         VStack(alignment: .trailing, spacing: 8) {
                             Picker("", selection: cycleSelection(for: profile, presets: presets)) {
@@ -133,6 +133,27 @@ struct SettingsView: View {
                     }
                     .frame(width: controlWidth, alignment: .trailing)
                     }
+                }
+
+                SettingsCard(title: "Schedule", systemImage: "calendar") {
+                    SettingsRow(title: "Timezone") {
+                        TimezonePicker(selectedTimezone: Binding(
+                            get: { profile.wrappedValue.timezoneIdentifier },
+                            set: { profile.wrappedValue.timezoneIdentifier = $0 }
+                        ))
+                        .frame(width: controlWidth, alignment: .trailing)
+                    }
+
+                    Divider().padding(.leading, 12)
+                    SettingsRow(title: "Active days") {
+                        VStack(alignment: .trailing, spacing: 8) {
+                            WeekdayPicker(selectedWeekdays: Binding(
+                                get: { profile.wrappedValue.enabledWeekdays },
+                                set: { profile.wrappedValue.enabledWeekdays = $0 }
+                            ))
+                        }
+                        .frame(width: controlWidth, alignment: .trailing)
+                    }
 
                     Divider().padding(.leading, 12)
                     SettingsRow(title: "Open time") {
@@ -155,27 +176,6 @@ struct SettingsView: View {
                         )
                         .labelsHidden()
                         .datePickerStyle(.compact)
-                        .frame(width: controlWidth, alignment: .trailing)
-                    }
-                }
-
-                SettingsCard(title: "Schedule", systemImage: "calendar") {
-                    SettingsRow(title: "Timezone") {
-                        TimezonePicker(selectedTimezone: Binding(
-                            get: { profile.wrappedValue.timezoneIdentifier },
-                            set: { profile.wrappedValue.timezoneIdentifier = $0 }
-                        ))
-                        .frame(width: controlWidth, alignment: .trailing)
-                    }
-
-                    Divider().padding(.leading, 12)
-                    SettingsRow(title: "Active days") {
-                        VStack(alignment: .trailing, spacing: 8) {
-                            WeekdayPicker(selectedWeekdays: Binding(
-                                get: { profile.wrappedValue.enabledWeekdays },
-                                set: { profile.wrappedValue.enabledWeekdays = $0 }
-                            ))
-                        }
                         .frame(width: controlWidth, alignment: .trailing)
                     }
                 }
