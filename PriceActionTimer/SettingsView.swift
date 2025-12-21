@@ -55,7 +55,7 @@ struct SettingsView: View {
         .onAppear(perform: ensureSelection)
         .onAppear {
             // Bring settings window to front
-            NSApp.activate(ignoringOtherApps: true)
+            NSApp.activate()
         }
         .onChange(of: timerStore.profiles) { _, _ in ensureSelection() }
         .frame(minWidth: 720, minHeight: 420)

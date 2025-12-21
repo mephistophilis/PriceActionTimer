@@ -48,6 +48,17 @@ import AppKit
 
 class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Check if another instance is already running
+        let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+        if runningApps.count > 1 {
+            // Another instance is running, activate it and terminate this one
+            for app in runningApps where app != NSRunningApplication.current {
+                app.activate()
+            }
+            NSApp.terminate(nil)
+            return
+        }
+
         UNUserNotificationCenter.current().delegate = self
     }
 
