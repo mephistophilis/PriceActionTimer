@@ -6,12 +6,68 @@
 //
 
 import SwiftUI
+import UserNotifications
 
 @main
 struct PriceActionTimerApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @StateObject private var timerStore = TimerStore()
+
+    init() {
+        requestNotificationPermission()
+    }
+
     var body: some Scene {
+        MenuBarExtra {
+            ContentView(timerStore: timerStore, displayMode: .menu)
+                .padding()
+                .frame(width: 280)
+        } label: {
+            Label("PriceAction", systemImage: "timer")
+        }
+
         WindowGroup {
-            ContentView()
+            ContentView(timerStore: timerStore, displayMode: .main)
+        }
+        .windowResizability(.contentSize)
+
+        #if os(macOS)
+        Settings {
+            SettingsView(timerStore: timerStore)
+        }
+        #endif
+    }
+
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+            if granted {
+                DispatchQueue.main.async {
+                    // Delegate is set in AppDelegate.applicationDidFinishLaunching
+                }
+            }
         }
     }
 }
+
+#if os(macOS)
+import AppKit
+
+class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        UNUserNotificationCenter.current().delegate = self
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        // Show notification even when app is in foreground
+        completionHandler([.banner, .sound, .badge])
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        completionHandler()
+    }
+}
+#endif
