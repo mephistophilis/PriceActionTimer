@@ -73,7 +73,31 @@ final class TimerManager: ObservableObject {
         enabledWeekdays = profile.enabledWeekdays
         timezone = profile.timezone
 
-        // Don't stop - let syncManagersWithProfiles handle start/stop
+        // If running, check if still valid with new settings
+        if phase != .idle {
+            checkIfShouldStop()
+        }
+    }
+
+    /// Check if the timer should stop based on current settings (weekday, time window)
+    private func checkIfShouldStop() {
+        let now = Date()
+
+        // Check if current weekday is enabled
+        let weekday = calendar.component(.weekday, from: now)
+        if !enabledWeekdays.contains(weekday) {
+            stop()
+            remainingTime = cycleDuration
+            return
+        }
+
+        // Check if within time window
+        let window = currentWindow(from: now)
+        if now < window.start || now >= window.end {
+            stop()
+            remainingTime = cycleDuration
+            return
+        }
     }
 
     func start() {
@@ -82,9 +106,21 @@ final class TimerManager: ObservableObject {
             return
         }
 
-        warned = false
         let now = Date()
+
+        // Check if current weekday is enabled
+        let weekday = calendar.component(.weekday, from: now)
+        if !enabledWeekdays.contains(weekday) {
+            return
+        }
+
+        // Check if within time window
         let window = currentWindow(from: now)
+        if now < window.start || now >= window.end {
+            return
+        }
+
+        warned = false
         let nextDeadline = nextCycleDeadline(from: now, window: window)
         deadline = nextDeadline
         marketStart = window.start
@@ -173,12 +209,16 @@ final class TimerManager: ObservableObject {
             return
         }
 
-        // Check if outside market hours
-        if let marketEnd, now >= marketEnd {
+        // Check if outside market hours (use current settings, not cached)
+        let window = currentWindow(from: now)
+        if now < window.start || now >= window.end {
             stop()
-            remainingTime = 0
+            remainingTime = cycleDuration
             return
         }
+
+        // Update marketEnd with current settings
+        marketEnd = window.end
 
         let interval = deadline.timeIntervalSinceNow
         remainingTime = max(0, interval)

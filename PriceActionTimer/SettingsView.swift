@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 struct SettingsView: View {
     @ObservedObject var timerStore: TimerStore
@@ -47,6 +50,10 @@ struct SettingsView: View {
             }
         }
         .onAppear(perform: ensureSelection)
+        .onAppear {
+            // Bring settings window to front
+            NSApp.activate(ignoringOtherApps: true)
+        }
         .onChange(of: timerStore.profiles) { _, _ in ensureSelection() }
         .frame(minWidth: 720, minHeight: 420)
     }
@@ -401,8 +408,10 @@ private struct WeekdayButton: View {
 
 private struct TimezonePicker: View {
     @Binding var selectedTimezone: String
+    @State private var showingPopover = false
+    @State private var searchText = ""
 
-    // Common timezones for quick selection (before deduplication)
+    // Common timezones for quick selection
     private let baseCommonTimezones: [(String, String)] = [
         ("Local", TimeZone.current.identifier),
         ("New York (EST)", "America/New_York"),
@@ -424,17 +433,15 @@ private struct TimezonePicker: View {
         var result: [(String, String)] = []
 
         for (label, identifier) in baseCommonTimezones {
-            // Skip if already seen
             if seen.contains(identifier) {
                 continue
             }
 
-            // Add Local first
             if label == "Local" {
                 result.append((label, identifier))
                 seen.insert(identifier)
             } else {
-                // Skip if this timezone is same as Local (already shown)
+                // Skip if this timezone is same as Local
                 if identifier == currentTZ {
                     continue
                 }
@@ -446,44 +453,133 @@ private struct TimezonePicker: View {
         return result
     }
 
-    private var allTimezones: [(String, String)] {
-        // Get identifiers already in common list
+    private var displayName: String {
+        if let match = baseCommonTimezones.first(where: { $0.1 == selectedTimezone }) {
+            return match.0
+        }
+        let tz = TimeZone(identifier: selectedTimezone)
+        let abbr = tz?.abbreviation() ?? ""
+        let name = selectedTimezone.replacingOccurrences(of: "_", with: " ")
+        return "\(name) (\(abbr))"
+    }
+
+    private var filteredTimezones: [(String, String)] {
+        guard !searchText.isEmpty else { return [] }
+        let query = searchText.lowercased()
         let commonIdentifiers = Set(commonTimezones.map { $0.1 })
 
-        // Filter out common timezones and Local timezone from all timezones
-        let filtered = TimeZone.knownTimeZoneIdentifiers
+        return TimeZone.knownTimeZoneIdentifiers
             .filter { identifier in
-                // Exclude if in common list
+                // Exclude common timezones
                 if commonIdentifiers.contains(identifier) {
                     return false
                 }
-                return true
+                // Match search text
+                let displayName = identifier.replacingOccurrences(of: "_", with: " ").lowercased()
+                let tz = TimeZone(identifier: identifier)
+                let abbr = (tz?.abbreviation() ?? "").lowercased()
+                return displayName.contains(query) || abbr.contains(query)
             }
-            .sorted()
+            .prefix(20) // Limit results for performance
             .map { identifier -> (String, String) in
                 let tz = TimeZone(identifier: identifier)
                 let abbreviation = tz?.abbreviation() ?? ""
                 let displayName = identifier.replacingOccurrences(of: "_", with: " ")
                 return ("\(displayName) (\(abbreviation))", identifier)
             }
-        return filtered
     }
 
     var body: some View {
-        Picker("", selection: $selectedTimezone) {
-            // Common timezones section (deduplicated)
-            ForEach(commonTimezones, id: \.1) { timezone in
-                Text(timezone.0).tag(timezone.1)
-            }
-
-            Divider()
-
-            // All other timezones
-            ForEach(allTimezones, id: \.1) { timezone in
-                Text(timezone.0).tag(timezone.1)
+        Button {
+            showingPopover = true
+        } label: {
+            HStack {
+                Text(displayName)
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
-        .pickerStyle(.menu)
-        .labelsHidden()
+        .buttonStyle(.plain)
+        .popover(isPresented: $showingPopover, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("Search timezone...", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal, 8)
+                    .padding(.top, 8)
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        // Common timezones section
+                        Text("Common")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.top, 4)
+
+                        ForEach(commonTimezones, id: \.1) { tz in
+                            timezoneRow(label: tz.0, identifier: tz.1)
+                        }
+
+                        // Search results section
+                        if !searchText.isEmpty {
+                            if filteredTimezones.isEmpty {
+                                Text("No results for \"\(searchText)\"")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                            } else {
+                                Divider()
+                                    .padding(.vertical, 4)
+
+                                Text("Search Results")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 12)
+
+                                ForEach(filteredTimezones, id: \.1) { tz in
+                                    timezoneRow(label: tz.0, identifier: tz.1)
+                                }
+                            }
+                        } else {
+                            Text("Type to search all timezones")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                        }
+                    }
+                }
+                .frame(maxHeight: 300)
+            }
+            .frame(width: 280)
+            .padding(.bottom, 8)
+        }
+    }
+
+    private func timezoneRow(label: String, identifier: String) -> some View {
+        Button {
+            selectedTimezone = identifier
+            showingPopover = false
+            searchText = ""
+        } label: {
+            HStack {
+                Text(label)
+                    .font(.subheadline)
+                Spacer()
+                if selectedTimezone == identifier {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.blue)
+                        .font(.caption)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(selectedTimezone == identifier ? Color.accentColor.opacity(0.1) : Color.clear)
     }
 }
