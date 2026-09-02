@@ -11,13 +11,23 @@ import UserNotifications
 @main
 struct PriceActionTimerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var timerStore = TimerStore()
+    @StateObject private var timerStore: TimerStore
+    @StateObject private var countdownOverlay: CountdownOverlayController
 
     init() {
-        requestNotificationPermission()
+        let store = Self.isTesting ? TimerStore.preview : TimerStore()
+        let defaults = Self.isTesting ? UserDefaults(suiteName: "com.m.PriceActionTimer.preview")! : .standard
+        _timerStore = StateObject(wrappedValue: store)
+        _countdownOverlay = StateObject(wrappedValue: CountdownOverlayController(
+            timerStore: store,
+            settings: CountdownOverlaySettings(userDefaults: defaults),
+            presentsWindows: !Self.isTesting
+        ))
+        if !Self.isTesting { requestNotificationPermission() }
     }
 
     var body: some Scene {
+        let overlay = countdownOverlay
         MenuBarExtra {
             ContentView(timerStore: timerStore, displayMode: .menu)
                 .padding()
@@ -33,13 +43,18 @@ struct PriceActionTimerApp: App {
 
         #if os(macOS)
         Settings {
-            SettingsView(timerStore: timerStore)
+            SettingsView(timerStore: timerStore, overlaySettings: overlay.settings, previewCountdown: overlay.preview)
         }
         #endif
     }
 
     private func requestNotificationPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+    }
+
+    static var isTesting: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || NSClassFromString("XCTestCase") != nil
     }
 }
 
@@ -48,6 +63,7 @@ import AppKit
 
 class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard !PriceActionTimerApp.isTesting else { return }
         // Check if another instance is already running
         let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
         if runningApps.count > 1 {

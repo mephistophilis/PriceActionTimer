@@ -12,6 +12,8 @@ import AppKit
 
 struct SettingsView: View {
     @ObservedObject var timerStore: TimerStore
+    @ObservedObject var overlaySettings: CountdownOverlaySettings
+    var previewCountdown: () -> Void = {}
     @State private var selection: UUID?
     private let controlWidth: CGFloat = 220
 
@@ -21,7 +23,7 @@ struct SettingsView: View {
                 ForEach(timerStore.profiles) { profile in
                     SettingsListRow(
                         profile: profile,
-                        isRunning: timerStore.manager(for: profile.id)?.phase != .idle
+                        isRunning: timerStore.manager(for: profile.id).map { $0.phase != .idle } ?? false
                     )
                     .tag(profile.id)
                 }
@@ -44,12 +46,25 @@ struct SettingsView: View {
             if let binding = binding(for: selection) {
                 detailEditor(for: binding)
             } else {
-                VStack {
-                    Text("Select a timer on the left to edit")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        desktopCountdownSettings
+                        VStack(spacing: 12) {
+                            Text(timerStore.profiles.isEmpty ? "No timers" : "Select a timer on the left to edit")
+                                .font(.title3)
+                                .foregroundStyle(.secondary)
+                            if timerStore.profiles.isEmpty {
+                                Button("New timer") {
+                                    timerStore.addProfile()
+                                    ensureSelection()
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 160)
+                    }
+                    .padding(20)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .navigationTitle("Settings")
             }
         }
         .onAppear(perform: ensureSelection)
@@ -71,9 +86,39 @@ struct SettingsView: View {
         return "\(minutes)m \(secs)s"
     }
 
+    private var desktopCountdownSettings: some View {
+        SettingsCard(title: "Desktop countdown", systemImage: "rectangle.on.rectangle") {
+            SettingsRow(title: "Show countdown", subtitle: "For all timers, during their warning period") {
+                Toggle("Show desktop countdown", isOn: $overlaySettings.isEnabled)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .frame(width: controlWidth, alignment: .trailing)
+            }
+            Divider().padding(.leading, 12)
+            SettingsRow(title: "Position", subtitle: "On the main display; clicks pass through") {
+                Picker("Countdown position", selection: $overlaySettings.corner) {
+                    ForEach(CountdownCorner.allCases) { corner in
+                        Text(corner.title).tag(corner)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: controlWidth, alignment: .trailing)
+                .disabled(!overlaySettings.isEnabled)
+            }
+            Divider().padding(.leading, 12)
+            SettingsRow(title: "Preview", subtitle: "Show a 10-second sample") {
+                Button("Preview countdown", action: previewCountdown)
+                    .disabled(!overlaySettings.isEnabled)
+                    .frame(width: controlWidth, alignment: .trailing)
+            }
+        }
+    }
+
     private func detailEditor(for profile: Binding<TimerProfile>) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                desktopCountdownSettings
+
                 SettingsCard(title: "Status", systemImage: "sparkles") {
                     SettingsRow(title: "Enabled") {
                         Toggle("", isOn: profile.isEnabled)
@@ -109,8 +154,7 @@ struct SettingsView: View {
                                 Stepper(value: Binding(
                                     get: { profile.wrappedValue.cycleDuration },
                                     set: { newValue in
-                                        profile.wrappedValue.cycleDuration = min(max(60, newValue), 86400)
-                                        profile.wrappedValue.warningLeadTime = min(profile.wrappedValue.warningLeadTime, profile.wrappedValue.cycleDuration)
+                                        profile.wrappedValue.cycleDuration = newValue
                                     }
                                 ), in: 60...86400, step: 60) {
                                     Text(format(seconds: profile.wrappedValue.cycleDuration))
@@ -126,7 +170,7 @@ struct SettingsView: View {
                         Stepper(value: Binding(
                             get: { profile.wrappedValue.warningLeadTime },
                             set: { newValue in
-                            profile.wrappedValue.warningLeadTime = min(max(3, newValue), profile.wrappedValue.cycleDuration)
+                            profile.wrappedValue.warningLeadTime = newValue
                         }
                     ), in: 3...300, step: 1) {
                         Text("\(Int(profile.wrappedValue.warningLeadTime))s")
@@ -187,7 +231,6 @@ struct SettingsView: View {
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
-                        .disabled(timerStore.profiles.count <= 1)
                         .frame(width: controlWidth, alignment: .trailing)
                     }
                 }
@@ -199,8 +242,11 @@ struct SettingsView: View {
 
     private func binding(for id: UUID?) -> Binding<TimerProfile>? {
         guard let id,
-              let index = timerStore.profiles.firstIndex(where: { $0.id == id }) else { return nil }
-        return $timerStore.profiles[index]
+              let profile = timerStore.profiles.first(where: { $0.id == id }) else { return nil }
+        return Binding(
+            get: { timerStore.profiles.first(where: { $0.id == id }) ?? profile },
+            set: { timerStore.updateProfile($0) }
+        )
     }
 
     private func cycleSelection(for profile: Binding<TimerProfile>, presets: [TimeInterval]) -> Binding<String> {
@@ -215,13 +261,11 @@ struct SettingsView: View {
                 if newValue == "custom" {
                     if let match = presets.first(where: { abs($0 - profile.wrappedValue.cycleDuration) < 0.1 }) {
                         profile.wrappedValue.cycleDuration = max(60, match + 60)
-                        profile.wrappedValue.warningLeadTime = min(profile.wrappedValue.warningLeadTime, profile.wrappedValue.cycleDuration)
                     }
                     return
                 }
                 if let presetValue = Double(newValue), presets.contains(presetValue) {
                     profile.wrappedValue.cycleDuration = presetValue
-                    profile.wrappedValue.warningLeadTime = min(profile.wrappedValue.warningLeadTime, presetValue)
                 }
             }
         )
@@ -249,7 +293,7 @@ struct SettingsView: View {
 
     private func deleteCurrent(profileID: UUID) {
         if let index = timerStore.profiles.firstIndex(where: { $0.id == profileID }) {
-            timerStore.profiles.remove(at: index)
+            timerStore.removeProfiles(at: IndexSet(integer: index))
             ensureSelection()
         }
     }
@@ -262,15 +306,17 @@ struct SettingsView: View {
             },
             set: { newDate in
                 let parts = Calendar.current.dateComponents([.hour, .minute], from: newDate)
-                components.wrappedValue.hour = parts.hour
-                components.wrappedValue.minute = parts.minute
+                components.wrappedValue = DateComponents(hour: parts.hour, minute: parts.minute)
             }
         )
     }
 }
 
 #Preview {
-    SettingsView(timerStore: TimerStore())
+    SettingsView(
+        timerStore: .preview,
+        overlaySettings: CountdownOverlaySettings(userDefaults: UserDefaults(suiteName: "com.m.PriceActionTimer.preview")!)
+    )
 }
 
 private struct SettingsListRow: View {

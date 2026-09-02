@@ -51,6 +51,13 @@ struct TimerProfile: Identifiable, Equatable, Codable {
         timezoneIdentifier: TimeZone.current.identifier
     )
 
+    func normalized() -> TimerProfile {
+        var profile = self
+        profile.cycleDuration = cycleDuration.isFinite ? min(max(60, cycleDuration), 86400) : 60
+        profile.warningLeadTime = warningLeadTime.isFinite ? min(max(3, warningLeadTime), profile.cycleDuration) : 10
+        return profile
+    }
+
     func timeRangeDescription(calendar: Calendar = .current) -> String {
         var cal = calendar
         cal.timeZone = timezone

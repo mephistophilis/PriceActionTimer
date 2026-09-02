@@ -140,5 +140,5 @@ private struct TimerDashboard: View {
 }
 
 #Preview {
-    ContentView(timerStore: TimerStore(), displayMode: .main)
+    ContentView(timerStore: .preview, displayMode: .main)
 }

@@ -6,17 +6,12 @@
 //
 
 import Foundation
-import SwiftUI
 import Combine
+import AppKit
 
 @MainActor
 final class TimerStore: ObservableObject {
-    @Published var profiles: [TimerProfile] {
-        didSet {
-            syncManagersWithProfiles()
-            refreshSelectionAfterChange()
-        }
-    }
+    @Published private(set) var profiles: [TimerProfile]
     @Published var selectedProfileID: UUID? {
         didSet {
             refreshSelectionAfterChange()
@@ -25,212 +20,69 @@ final class TimerStore: ObservableObject {
 
     private var managers: [UUID: TimerManager] = [:]
     private var managerSubscriptions: [UUID: AnyCancellable] = [:]
+    private var clockSubscriptions: [AnyCancellable] = []
     private var schedulerTimer: DispatchSourceTimer?
-    private let userDefaults = UserDefaults.standard
-    private let profilesKey = "com.m.PriceActionTimer.profiles"
-    private let selectedProfileKey = "com.m.PriceActionTimer.selectedProfile"
+    private let storage: TimerProfileStorage
+    private let now: () -> Date
+    private let notifications: TimerNotificationAggregator
+    private let automaticallySchedules: Bool
+    private var isStopped = false
 
     var selectedProfile: TimerProfile? {
         guard let selectedProfileID else { return nil }
         return profiles.first(where: { $0.id == selectedProfileID && $0.isEnabled })
     }
+
     var hasEnabledProfile: Bool {
         profiles.contains(where: { $0.isEnabled })
     }
 
-    init(profiles: [TimerProfile]? = nil) {
-        // Try to migrate from old file-based storage if needed
-        Self.migrateFromFileStorageIfNeeded()
-
-        let initialProfiles = profiles ?? Self.loadProfiles() ?? [TimerProfile.initial]
-        self.profiles = initialProfiles
-
-        // Load selected profile ID from UserDefaults
-        if let savedID = userDefaults.string(forKey: selectedProfileKey),
-           let uuid = UUID(uuidString: savedID) {
-            self.selectedProfileID = uuid
-        } else {
-            self.selectedProfileID = initialProfiles.first(where: { $0.isEnabled })?.id
-        }
+    init(
+        profiles: [TimerProfile]? = nil,
+        storage: TimerProfileStorage? = nil,
+        now: @escaping () -> Date = Date.init,
+        notifications: TimerNotificationAggregator? = nil,
+        automaticallySchedules: Bool = true
+    ) {
+        let storage = storage ?? TimerProfileStorage()
+        self.storage = storage
+        self.now = now
+        self.notifications = notifications ?? TimerNotificationAggregator()
+        self.automaticallySchedules = automaticallySchedules
+        self.profiles = (profiles ?? storage.loadProfiles() ?? [.initial]).map { $0.normalized() }
+        self.selectedProfileID = storage.selectedProfileID
 
         syncManagersWithProfiles()
         refreshSelectionAfterChange()
-        startScheduler()
-    }
-
-    /// Periodically check if idle timers should be started
-    private func startScheduler() {
-        scheduleNextCheck()
-    }
-
-    private func scheduleNextCheck() {
-        schedulerTimer?.cancel()
-        schedulerTimer = nil
-
-        // Find the next start time among all enabled profiles
-        guard let nextStart = findNextStartTime() else {
-            // No upcoming start time, check again in 1 hour
-            scheduleCheckAfter(seconds: 3600)
-            return
-        }
-
-        let delay = nextStart.timeIntervalSinceNow
-        if delay <= 0 {
-            // Should start now
-            checkAndStartIdleTimers()
-            // Schedule next check in 1 second to avoid tight loop
-            scheduleCheckAfter(seconds: 1)
-        } else {
-            // Schedule for the exact start time
-            scheduleCheckAfter(seconds: delay)
-        }
-    }
-
-    private func scheduleCheckAfter(seconds: TimeInterval) {
-        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
-        timer.schedule(deadline: .now() + seconds)
-        timer.setEventHandler { [weak self] in
-            self?.checkAndStartIdleTimers()
-            self?.scheduleNextCheck()
-        }
-        schedulerTimer = timer
-        timer.resume()
-    }
-
-    private func findNextStartTime() -> Date? {
-        let now = Date()
-        var nextStart: Date?
-
-        for profile in profiles where profile.isEnabled {
-            guard let manager = managers[profile.id], manager.phase == .idle else { continue }
-
-            // Calculate next valid start time for this profile
-            if let start = calculateNextStartTime(for: profile, from: now) {
-                if nextStart == nil || start < nextStart! {
-                    nextStart = start
-                }
-            }
-        }
-
-        return nextStart
-    }
-
-    private func calculateNextStartTime(for profile: TimerProfile, from date: Date) -> Date? {
-        var calendar = Calendar.current
-        calendar.timeZone = profile.timezone
-
-        // Get today's start time in profile's timezone
-        let components = calendar.dateComponents([.year, .month, .day], from: date)
-        var startComponents = components
-        startComponents.hour = profile.watchStart.hour
-        startComponents.minute = profile.watchStart.minute
-
-        guard var startTime = calendar.date(from: startComponents) else { return nil }
-
-        // Check up to 7 days ahead to find next valid start
-        for _ in 0..<7 {
-            let weekday = calendar.component(.weekday, from: startTime)
-            let endComponents = calendar.dateComponents([.year, .month, .day], from: startTime)
-            var endDateComponents = endComponents
-            endDateComponents.hour = profile.watchEnd.hour
-            endDateComponents.minute = profile.watchEnd.minute
-            guard let endTime = calendar.date(from: endDateComponents) else { continue }
-
-            // Check if this day is enabled and start time is in the future
-            if profile.enabledWeekdays.contains(weekday) {
-                if startTime > date {
-                    return startTime
-                } else if date < endTime {
-                    // Already within window, should start now
-                    return date
-                }
-            }
-
-            // Move to next day
-            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: startTime) else { break }
-            startTime = nextDay
-        }
-
-        return nil
-    }
-
-    private func checkAndStartIdleTimers() {
-        for profile in profiles where profile.isEnabled {
-            guard let manager = managers[profile.id] else { continue }
-            if manager.phase == .idle {
-                manager.start()
-            }
-        }
+        if automaticallySchedules { observeClockChanges() }
+        refresh()
     }
 
     func addProfile() {
-        let profile = TimerProfile(
-            cycleDuration: 60,
-            warningLeadTime: 10,
-            isEnabled: true,
-            watchStart: DateComponents(hour: 9, minute: 30),
-            watchEnd: DateComponents(hour: 16, minute: 0),
-            enabledWeekdays: [2, 3, 4, 5, 6], // Mon-Fri
-            timezoneIdentifier: TimeZone.current.identifier
-        )
-        profiles.append(profile)
+        let profile = TimerProfile(cycleDuration: 60, warningLeadTime: 10)
+        setProfiles(profiles + [profile])
         selectedProfileID = profile.id
     }
 
+    func updateProfile(_ profile: TimerProfile) {
+        guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
+        var updated = profiles
+        updated[index] = profile.normalized()
+        setProfiles(updated)
+    }
+
     func removeProfiles(at offsets: IndexSet) {
-        guard profiles.count > 1 else { return }
-        profiles.remove(atOffsets: offsets)
-        if profiles.isEmpty {
-            profiles = [TimerProfile.initial]
-        }
+        let remaining = profiles.enumerated().filter { !offsets.contains($0.offset) }.map(\.element)
+        setProfiles(remaining)
+    }
+
+    private func setProfiles(_ updated: [TimerProfile]) {
+        guard profiles != updated else { return }
+        profiles = updated
+        storage.saveProfiles(profiles)
+        syncManagersWithProfiles()
         refreshSelectionAfterChange()
-    }
-
-    func stop() {
-        managers.values.forEach { $0.stop() }
-    }
-
-    private func refreshSelectionAfterChange() {
-        saveProfiles()
-
-        // Determine what the new selection should be
-        let newSelection: UUID?
-        if let currentSelection = selectedProfileID {
-            if let current = profiles.first(where: { $0.id == currentSelection }) {
-                if current.isEnabled {
-                    // Current selection is still valid
-                    newSelection = currentSelection
-                } else {
-                    // Current profile is disabled, find another
-                    newSelection = profiles.first(where: { $0.isEnabled })?.id
-                }
-            } else {
-                // Current profile was deleted, find another
-                newSelection = profiles.first(where: { $0.isEnabled })?.id
-            }
-        } else {
-            // No current selection, find one
-            newSelection = profiles.first(where: { $0.isEnabled })?.id
-        }
-
-        // Only update if different to avoid infinite recursion
-        if newSelection != selectedProfileID {
-            selectedProfileID = newSelection
-            return
-        }
-
-        // Save selected profile ID to UserDefaults
-        if let selectedProfileID {
-            userDefaults.set(selectedProfileID.uuidString, forKey: selectedProfileKey)
-        } else {
-            userDefaults.removeObject(forKey: selectedProfileKey)
-        }
-    }
-
-    private func ensureSelection() {
-        if selectedProfile == nil {
-            selectedProfileID = profiles.first(where: { $0.isEnabled })?.id
-        }
+        refresh()
     }
 
     func manager(for id: UUID?) -> TimerManager? {
@@ -238,96 +90,102 @@ final class TimerStore: ObservableObject {
         return managers[id]
     }
 
+    /// One clock sample drives every timer, including timers that were idle before a wake-up.
+    func refresh() {
+        guard !isStopped else { return }
+        let date = now()
+        for manager in managers.values {
+            manager.update(at: date)
+            if manager.phase != .warning { notifications.cancel(for: manager.profile.id) }
+        }
+        scheduleNextRefresh(after: date)
+    }
+
+    /// Shut down this store's scheduler and pending notifications.
+    func stop() {
+        isStopped = true
+        schedulerTimer?.cancel()
+        schedulerTimer = nil
+        clockSubscriptions.removeAll()
+        notifications.cancelAll()
+        managers.values.forEach { $0.stop() }
+    }
+
+    private func refreshSelectionAfterChange() {
+        let selection = selectedProfile?.id ?? profiles.first(where: { $0.isEnabled })?.id
+        if selectedProfileID != selection {
+            selectedProfileID = selection
+            return
+        }
+        storage.selectedProfileID = selection
+    }
+
     private func syncManagersWithProfiles() {
         let profileIDs = Set(profiles.map(\.id))
-
-        // Remove managers for deleted profiles
         let staleIDs = managers.keys.filter { !profileIDs.contains($0) }
-        for staleID in staleIDs {
-            managers[staleID]?.stop()
-            managers[staleID] = nil
-            managerSubscriptions[staleID] = nil
+        for id in staleIDs {
+            notifications.cancel(for: id)
+            managers[id]?.stop()
+            managers[id] = nil
+            managerSubscriptions[id] = nil
         }
 
-        // Create or update managers for each profile
         for profile in profiles {
-            let manager: TimerManager
-
-            if let existing = managers[profile.id] {
-                // Manager already exists
-                manager = existing
+            if let manager = managers[profile.id] {
+                manager.apply(profile: profile)
             } else {
-                // Create new manager
-                manager = TimerManager()
+                let manager = TimerManager(profile: profile, notify: notifications.enqueue)
                 managers[profile.id] = manager
-
-                // Set up subscription once for new manager
-                managerSubscriptions[profile.id] = manager.objectWillChange.sink { [weak self] _ in
-                    self?.objectWillChange.send()
-                }
-            }
-
-            // Apply profile settings (only updates properties, doesn't restart)
-            manager.apply(profile: profile)
-
-            // Control manager state based on profile enabled state
-            if profile.isEnabled {
-                // Only start if idle (prevents restarting running timers)
-                if manager.phase == .idle {
-                    manager.start()
-                }
-            } else {
-                // Stop if disabled
-                manager.stop()
+                // Parent views need phase changes; countdown updates stay in each dashboard.
+                managerSubscriptions[profile.id] = manager.$phase
+                    .removeDuplicates()
+                    .dropFirst()
+                    .sink { [weak self] _ in self?.objectWillChange.send() }
             }
         }
-
-        objectWillChange.send()
-        scheduleNextCheck()
     }
 
-    private func saveProfiles() {
-        do {
-            let data = try JSONEncoder().encode(profiles)
-            userDefaults.set(data, forKey: profilesKey)
-        } catch {
-            print("Failed to save profiles: \(error)")
-        }
-    }
+    private func scheduleNextRefresh(after date: Date) {
+        schedulerTimer?.cancel()
+        schedulerTimer = nil
+        guard automaticallySchedules else { return }
 
-    private static func loadProfiles() -> [TimerProfile]? {
-        guard let data = UserDefaults.standard.data(forKey: "com.m.PriceActionTimer.profiles") else {
-            return nil
-        }
-        return try? JSONDecoder().decode([TimerProfile].self, from: data)
-    }
-
-    private static func migrateFromFileStorageIfNeeded() {
-        let userDefaults = UserDefaults.standard
-        let profilesKey = "com.m.PriceActionTimer.profiles"
-        let migrationKey = "com.m.PriceActionTimer.migratedFromFile"
-
-        // Skip if already migrated or data exists in UserDefaults
-        if userDefaults.bool(forKey: migrationKey) || userDefaults.data(forKey: profilesKey) != nil {
+        let delay: TimeInterval
+        if managers.values.contains(where: { $0.phase != .idle }) {
+            delay = 0.25
+        } else if let nextStart = profiles.compactMap({ TimerSchedule(profile: $0).nextStart(after: date) }).min() {
+            delay = max(0.01, nextStart.timeIntervalSince(date))
+        } else {
             return
         }
 
-        // Try to load from old file location
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        let dir = base?.appendingPathComponent("PriceActionTimer", isDirectory: true)
-        guard let url = dir?.appendingPathComponent("profiles.json"),
-              let data = try? Data(contentsOf: url),
-              let profiles = try? JSONDecoder().decode([TimerProfile].self, from: data) else {
-            userDefaults.set(true, forKey: migrationKey)
-            return
-        }
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + delay)
+        timer.setEventHandler { [weak self] in self?.refresh() }
+        schedulerTimer = timer
+        timer.resume()
+    }
 
-        // Migrate to UserDefaults
-        if let encodedData = try? JSONEncoder().encode(profiles) {
-            userDefaults.set(encodedData, forKey: profilesKey)
-            print("Migrated \(profiles.count) profiles from file storage to UserDefaults")
+    private func observeClockChanges() {
+        let wake = NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)
+        let clock = NotificationCenter.default.publisher(for: .NSSystemClockDidChange)
+        let timezone = NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)
+        clockSubscriptions = [wake, clock, timezone].map { publisher in
+            publisher.receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in self?.refresh() }
         }
+    }
 
-        userDefaults.set(true, forKey: migrationKey)
+    static var preview: TimerStore {
+        TimerStore(
+            profiles: [.initial],
+            storage: TimerProfileStorage(userDefaults: UserDefaults(suiteName: "com.m.PriceActionTimer.preview")!, legacyFileURL: nil),
+            notifications: TimerNotificationAggregator(deliver: { _ in }),
+            automaticallySchedules: false
+        )
+    }
+
+    deinit {
+        schedulerTimer?.cancel()
     }
 }
