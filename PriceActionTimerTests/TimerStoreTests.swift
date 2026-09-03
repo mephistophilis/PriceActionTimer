@@ -1,7 +1,6 @@
 import Combine
 import Foundation
 import Testing
-import UserNotifications
 @testable import PriceActionTimer
 
 @MainActor
@@ -65,7 +64,7 @@ struct TimerStoreTests {
         #expect(fixture.store.selectedProfileID == nil)
         #expect(fixture.storage.loadProfiles() == [])
 
-        let restored = TimerStore(storage: fixture.storage, notifications: TimerNotificationAggregator(deliver: { _ in }), automaticallySchedules: false)
+        let restored = TimerStore(storage: fixture.storage, soundPlayer: TimerSoundPlayer(playSound: {}), automaticallySchedules: false)
         defer { restored.stop() }
         #expect(restored.profiles.isEmpty)
         restored.addProfile()
@@ -134,10 +133,10 @@ struct TimerStoreTests {
     }
 
     @Test(arguments: ["stop", "disable", "delete"])
-    func invalidatedTimersCancelPendingNotifications(action: String) async throws {
-        var delivered: [UNNotificationRequest] = []
-        let notifications = TimerNotificationAggregator(deliver: { delivered.append($0) })
-        let fixture = Fixture(at: "2026-09-02T09:30:50Z", notifications: notifications)
+    func invalidatedTimersCancelPendingSounds(action: String) async throws {
+        var playCount = 0
+        let soundPlayer = TimerSoundPlayer(playSound: { playCount += 1 })
+        let fixture = Fixture(at: "2026-09-02T09:30:50Z", soundPlayer: soundPlayer)
         defer { fixture.close() }
         switch action {
         case "stop":
@@ -150,36 +149,60 @@ struct TimerStoreTests {
             fixture.store.removeProfiles(at: IndexSet(integer: 0))
         }
         try await Task.sleep(for: .milliseconds(600))
-        #expect(delivered.isEmpty)
+        #expect(playCount == 0)
     }
 
-    @Test func activeTimerDeliversOneWarningThroughTheAggregator() async throws {
-        var delivered: [UNNotificationRequest] = []
-        let notifications = TimerNotificationAggregator(deliver: { delivered.append($0) })
-        let fixture = Fixture(at: "2026-09-02T09:30:50Z", notifications: notifications)
+    @Test func activeTimerPlaysOneSoundDuringWarning() async throws {
+        var playCount = 0
+        let soundPlayer = TimerSoundPlayer(playSound: { playCount += 1 })
+        let fixture = Fixture(at: "2026-09-02T09:30:50Z", soundPlayer: soundPlayer)
         defer { fixture.close() }
         fixture.store.refresh()
         try await Task.sleep(for: .milliseconds(600))
-        #expect(delivered.count == 1)
-        #expect(delivered.first?.content.body == "1m cycle - 10s left")
+        #expect(playCount == 1)
+    }
+
+    @Test(arguments: [false, true])
+    func simultaneousTimersPlayOneSoundPerCycle(deleteOneBeforePlayback: Bool) async throws {
+        var playCount = 0
+        let soundPlayer = TimerSoundPlayer(playSound: { playCount += 1 })
+        let fixture = Fixture(at: "2026-09-02T09:30:50Z", soundPlayer: soundPlayer)
+        defer { fixture.close() }
+        fixture.store.addProfile()
+        var second = try #require(fixture.store.profiles.last)
+        second.timezoneIdentifier = "UTC"
+        fixture.store.updateProfile(second)
+        for profile in fixture.store.profiles {
+            #expect(fixture.store.manager(for: profile.id)?.phase == .warning)
+        }
+        if deleteOneBeforePlayback {
+            fixture.store.removeProfiles(at: IndexSet(integer: 0))
+        }
+        fixture.store.refresh()
+        try await Task.sleep(for: .milliseconds(600))
+        #expect(playCount == 1)
+
+        fixture.clock.date = date("2026-09-02T09:31:50Z")
+        fixture.store.refresh()
+        try await Task.sleep(for: .milliseconds(600))
+        #expect(playCount == 2)
     }
 
     @Test func shorteningWarningLeadCancelsOldWarningAndUsesNewThreshold() async throws {
-        var delivered: [UNNotificationRequest] = []
-        let notifications = TimerNotificationAggregator(deliver: { delivered.append($0) })
-        let fixture = Fixture(at: "2026-09-02T09:30:50Z", notifications: notifications)
+        var playCount = 0
+        let soundPlayer = TimerSoundPlayer(playSound: { playCount += 1 })
+        let fixture = Fixture(at: "2026-09-02T09:30:50Z", soundPlayer: soundPlayer)
         defer { fixture.close() }
         var profile = fixture.store.profiles[0]
         profile.warningLeadTime = 3
         fixture.store.updateProfile(profile)
         try await Task.sleep(for: .milliseconds(600))
-        #expect(delivered.isEmpty)
+        #expect(playCount == 0)
 
         fixture.clock.date = date("2026-09-02T09:30:57Z")
         fixture.store.refresh()
         try await Task.sleep(for: .milliseconds(600))
-        #expect(delivered.count == 1)
-        #expect(delivered.first?.content.body == "1m cycle - 3s left")
+        #expect(playCount == 1)
     }
 
     @Test func countdownDoesNotInvalidateTheWholeStore() {
@@ -201,7 +224,7 @@ struct TimerStoreTests {
         defer { fixture.close() }
         let invalid = Data("not-json".utf8)
         fixture.defaults.set(invalid, forKey: "com.m.PriceActionTimer.profiles")
-        let store = TimerStore(storage: fixture.storage, notifications: TimerNotificationAggregator(deliver: { _ in }), automaticallySchedules: false)
+        let store = TimerStore(storage: fixture.storage, soundPlayer: TimerSoundPlayer(playSound: {}), automaticallySchedules: false)
         defer { store.stop() }
         #expect(!store.profiles.isEmpty)
         #expect(fixture.defaults.data(forKey: "com.m.PriceActionTimer.profiles") == invalid)
@@ -220,13 +243,13 @@ private final class Fixture {
     let store: TimerStore
     let clock: TestClock
 
-    init(at value: String = "2026-09-02T09:32:20Z", automaticallySchedules: Bool = false, notifications: TimerNotificationAggregator? = nil) {
+    init(at value: String = "2026-09-02T09:32:20Z", automaticallySchedules: Bool = false, soundPlayer: TimerSoundPlayer? = nil) {
         defaults = UserDefaults(suiteName: suiteName)!
         storage = TimerProfileStorage(userDefaults: defaults, legacyFileURL: nil)
         let clock = TestClock(date: ISO8601DateFormatter().date(from: value)!)
         self.clock = clock
         let profile = TimerProfile(cycleDuration: 60, warningLeadTime: 10, timezoneIdentifier: "UTC")
-        store = TimerStore(profiles: [profile], storage: storage, now: { clock.date }, notifications: notifications ?? TimerNotificationAggregator(deliver: { _ in }), automaticallySchedules: automaticallySchedules)
+        store = TimerStore(profiles: [profile], storage: storage, now: { clock.date }, soundPlayer: soundPlayer ?? TimerSoundPlayer(playSound: {}), automaticallySchedules: automaticallySchedules)
     }
 
     func close() {

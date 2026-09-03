@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import UserNotifications
 
 @main
 struct PriceActionTimerApp: App {
@@ -23,7 +22,6 @@ struct PriceActionTimerApp: App {
             settings: CountdownOverlaySettings(userDefaults: defaults),
             presentsWindows: !Self.isTesting
         ))
-        if !Self.isTesting { requestNotificationPermission() }
     }
 
     var body: some Scene {
@@ -48,10 +46,6 @@ struct PriceActionTimerApp: App {
         #endif
     }
 
-    private func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
-    }
-
     static var isTesting: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
             || NSClassFromString("XCTestCase") != nil
@@ -61,7 +55,7 @@ struct PriceActionTimerApp: App {
 #if os(macOS)
 import AppKit
 
-class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !PriceActionTimerApp.isTesting else { return }
         // Check if another instance is already running
@@ -74,21 +68,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             NSApp.terminate(nil)
             return
         }
-
-        UNUserNotificationCenter.current().delegate = self
-    }
-
-    func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                willPresent notification: UNNotification,
-                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        // Show notification even when app is in foreground
-        completionHandler([.banner, .sound, .badge])
-    }
-
-    func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                didReceive response: UNNotificationResponse,
-                                withCompletionHandler completionHandler: @escaping () -> Void) {
-        completionHandler()
     }
 }
 #endif

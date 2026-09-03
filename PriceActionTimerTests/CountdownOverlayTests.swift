@@ -157,7 +157,7 @@ private final class OverlayFixture {
             profiles: profiles ?? [TimerProfile(cycleDuration: 60, warningLeadTime: 10, timezoneIdentifier: "UTC")],
             storage: TimerProfileStorage(userDefaults: defaults, legacyFileURL: nil),
             now: { clock.date },
-            notifications: TimerNotificationAggregator(deliver: { _ in }),
+            soundPlayer: TimerSoundPlayer(playSound: {}),
             automaticallySchedules: false
         )
         overlay = CountdownOverlayController(timerStore: store, settings: settings, presentsWindows: presentsWindows, now: { clock.date })

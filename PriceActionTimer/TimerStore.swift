@@ -24,7 +24,7 @@ final class TimerStore: ObservableObject {
     private var schedulerTimer: DispatchSourceTimer?
     private let storage: TimerProfileStorage
     private let now: () -> Date
-    private let notifications: TimerNotificationAggregator
+    private let soundPlayer: TimerSoundPlayer
     private let automaticallySchedules: Bool
     private var isStopped = false
 
@@ -41,13 +41,13 @@ final class TimerStore: ObservableObject {
         profiles: [TimerProfile]? = nil,
         storage: TimerProfileStorage? = nil,
         now: @escaping () -> Date = Date.init,
-        notifications: TimerNotificationAggregator? = nil,
+        soundPlayer: TimerSoundPlayer? = nil,
         automaticallySchedules: Bool = true
     ) {
         let storage = storage ?? TimerProfileStorage()
         self.storage = storage
         self.now = now
-        self.notifications = notifications ?? TimerNotificationAggregator()
+        self.soundPlayer = soundPlayer ?? TimerSoundPlayer()
         self.automaticallySchedules = automaticallySchedules
         self.profiles = (profiles ?? storage.loadProfiles() ?? [.initial]).map { $0.normalized() }
         self.selectedProfileID = storage.selectedProfileID
@@ -96,18 +96,18 @@ final class TimerStore: ObservableObject {
         let date = now()
         for manager in managers.values {
             manager.update(at: date)
-            if manager.phase != .warning { notifications.cancel(for: manager.profile.id) }
+            if manager.phase != .warning { soundPlayer.cancel(for: manager.profile.id) }
         }
         scheduleNextRefresh(after: date)
     }
 
-    /// Shut down this store's scheduler and pending notifications.
+    /// Shut down this store's scheduler and pending sounds.
     func stop() {
         isStopped = true
         schedulerTimer?.cancel()
         schedulerTimer = nil
         clockSubscriptions.removeAll()
-        notifications.cancelAll()
+        soundPlayer.cancelAll()
         managers.values.forEach { $0.stop() }
     }
 
@@ -124,7 +124,7 @@ final class TimerStore: ObservableObject {
         let profileIDs = Set(profiles.map(\.id))
         let staleIDs = managers.keys.filter { !profileIDs.contains($0) }
         for id in staleIDs {
-            notifications.cancel(for: id)
+            soundPlayer.cancel(for: id)
             managers[id]?.stop()
             managers[id] = nil
             managerSubscriptions[id] = nil
@@ -134,7 +134,7 @@ final class TimerStore: ObservableObject {
             if let manager = managers[profile.id] {
                 manager.apply(profile: profile)
             } else {
-                let manager = TimerManager(profile: profile, notify: notifications.enqueue)
+                let manager = TimerManager(profile: profile, notify: soundPlayer.enqueue)
                 managers[profile.id] = manager
                 // Parent views need phase changes; countdown updates stay in each dashboard.
                 managerSubscriptions[profile.id] = manager.$phase
@@ -180,7 +180,7 @@ final class TimerStore: ObservableObject {
         TimerStore(
             profiles: [.initial],
             storage: TimerProfileStorage(userDefaults: UserDefaults(suiteName: "com.m.PriceActionTimer.preview")!, legacyFileURL: nil),
-            notifications: TimerNotificationAggregator(deliver: { _ in }),
+            soundPlayer: TimerSoundPlayer(playSound: {}),
             automaticallySchedules: false
         )
     }
