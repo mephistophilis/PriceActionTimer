@@ -180,7 +180,7 @@ final class TimerStore: ObservableObject {
         TimerStore(
             profiles: [.initial],
             storage: TimerProfileStorage(userDefaults: UserDefaults(suiteName: "com.m.PriceActionTimer.preview")!, legacyFileURL: nil),
-            soundPlayer: TimerSoundPlayer(playSound: {}),
+            soundPlayer: TimerSoundPlayer(playSound: { _ in }),
             automaticallySchedules: false
         )
     }

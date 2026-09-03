@@ -64,7 +64,7 @@ struct TimerStoreTests {
         #expect(fixture.store.selectedProfileID == nil)
         #expect(fixture.storage.loadProfiles() == [])
 
-        let restored = TimerStore(storage: fixture.storage, soundPlayer: TimerSoundPlayer(playSound: {}), automaticallySchedules: false)
+        let restored = TimerStore(storage: fixture.storage, soundPlayer: TimerSoundPlayer(playSound: { _ in }), automaticallySchedules: false)
         defer { restored.stop() }
         #expect(restored.profiles.isEmpty)
         restored.addProfile()
@@ -132,11 +132,11 @@ struct TimerStoreTests {
         #expect(fixture.storage.selectedProfileID == fixture.store.profiles[0].id)
     }
 
-    @Test(arguments: ["stop", "disable", "delete"])
-    func invalidatedTimersCancelPendingSounds(action: String) async throws {
+    @Test(arguments: ["stop", "disable", "delete"], ["2026-09-02T09:30:50Z", "2026-09-02T09:30:55Z"])
+    func invalidatedTimersCancelPendingSounds(action: String, warningTime: String) async throws {
         var playCount = 0
-        let soundPlayer = TimerSoundPlayer(playSound: { playCount += 1 })
-        let fixture = Fixture(at: "2026-09-02T09:30:50Z", soundPlayer: soundPlayer)
+        let soundPlayer = TimerSoundPlayer(playSound: { _ in playCount += 1 })
+        let fixture = Fixture(at: warningTime, soundPlayer: soundPlayer)
         defer { fixture.close() }
         switch action {
         case "stop":
@@ -153,19 +153,44 @@ struct TimerStoreTests {
     }
 
     @Test func activeTimerPlaysOneSoundDuringWarning() async throws {
-        var playCount = 0
-        let soundPlayer = TimerSoundPlayer(playSound: { playCount += 1 })
+        var playedKinds: [TimerWarning.Kind] = []
+        let soundPlayer = TimerSoundPlayer(playSound: { playedKinds.append($0) })
         let fixture = Fixture(at: "2026-09-02T09:30:50Z", soundPlayer: soundPlayer)
         defer { fixture.close() }
         fixture.store.refresh()
         try await Task.sleep(for: .milliseconds(600))
-        #expect(playCount == 1)
+        #expect(playedKinds == [.initial])
+    }
+
+    @Test func activeTimerPlaysFinalSecondsSoundOncePerCycle() async throws {
+        var playedKinds: [TimerWarning.Kind] = []
+        let soundPlayer = TimerSoundPlayer(playSound: { playedKinds.append($0) })
+        let fixture = Fixture(at: "2026-09-02T09:30:50Z", soundPlayer: soundPlayer)
+        defer { fixture.close() }
+
+        try await Task.sleep(for: .milliseconds(600))
+        #expect(playedKinds == [.initial])
+
+        fixture.clock.date = date("2026-09-02T09:30:55Z")
+        fixture.store.refresh()
+        try await Task.sleep(for: .milliseconds(600))
+        #expect(playedKinds == [.initial, .finalSeconds])
+
+        fixture.clock.date = date("2026-09-02T09:30:59Z")
+        fixture.store.refresh()
+        try await Task.sleep(for: .milliseconds(600))
+        #expect(playedKinds == [.initial, .finalSeconds])
+
+        fixture.clock.date = date("2026-09-02T09:31:50Z")
+        fixture.store.refresh()
+        try await Task.sleep(for: .milliseconds(600))
+        #expect(playedKinds == [.initial, .finalSeconds, .initial])
     }
 
     @Test(arguments: [false, true])
     func simultaneousTimersPlayOneSoundPerCycle(deleteOneBeforePlayback: Bool) async throws {
-        var playCount = 0
-        let soundPlayer = TimerSoundPlayer(playSound: { playCount += 1 })
+        var playedKinds: [TimerWarning.Kind] = []
+        let soundPlayer = TimerSoundPlayer(playSound: { playedKinds.append($0) })
         let fixture = Fixture(at: "2026-09-02T09:30:50Z", soundPlayer: soundPlayer)
         defer { fixture.close() }
         fixture.store.addProfile()
@@ -180,29 +205,56 @@ struct TimerStoreTests {
         }
         fixture.store.refresh()
         try await Task.sleep(for: .milliseconds(600))
-        #expect(playCount == 1)
+        #expect(playedKinds == [.initial])
 
         fixture.clock.date = date("2026-09-02T09:31:50Z")
         fixture.store.refresh()
         try await Task.sleep(for: .milliseconds(600))
-        #expect(playCount == 2)
+        #expect(playedKinds == [.initial, .initial])
+    }
+
+    @Test func soundPlayerCoalescesSameBatchAndFavorsFinalSeconds() async throws {
+        var playedKinds: [TimerWarning.Kind] = []
+        let soundPlayer = TimerSoundPlayer(playSound: { playedKinds.append($0) })
+        let firstID = UUID()
+        let secondID = UUID()
+
+        soundPlayer.enqueue(TimerWarning(profileID: firstID, duration: "1m", remaining: "10s", kind: .initial))
+        soundPlayer.enqueue(TimerWarning(profileID: secondID, duration: "1m", remaining: "5s", kind: .finalSeconds))
+        try await Task.sleep(for: .milliseconds(600))
+
+        #expect(playedKinds == [.finalSeconds])
+    }
+
+    @Test func cancellingOneProfilePreservesOtherPendingSound() async throws {
+        var playedKinds: [TimerWarning.Kind] = []
+        let soundPlayer = TimerSoundPlayer(playSound: { playedKinds.append($0) })
+        let cancelledID = UUID()
+        let remainingID = UUID()
+
+        soundPlayer.enqueue(TimerWarning(profileID: cancelledID, duration: "1m", remaining: "5s", kind: .finalSeconds))
+        soundPlayer.enqueue(TimerWarning(profileID: remainingID, duration: "1m", remaining: "10s", kind: .initial))
+        soundPlayer.cancel(for: cancelledID)
+        try await Task.sleep(for: .milliseconds(600))
+
+        #expect(playedKinds == [.initial])
     }
 
     @Test func shorteningWarningLeadCancelsOldWarningAndUsesNewThreshold() async throws {
-        var playCount = 0
-        let soundPlayer = TimerSoundPlayer(playSound: { playCount += 1 })
+        var playedKinds: [TimerWarning.Kind] = []
+        let soundPlayer = TimerSoundPlayer(playSound: { playedKinds.append($0) })
         let fixture = Fixture(at: "2026-09-02T09:30:50Z", soundPlayer: soundPlayer)
         defer { fixture.close() }
         var profile = fixture.store.profiles[0]
         profile.warningLeadTime = 3
         fixture.store.updateProfile(profile)
         try await Task.sleep(for: .milliseconds(600))
-        #expect(playCount == 0)
+        #expect(playedKinds.isEmpty)
 
         fixture.clock.date = date("2026-09-02T09:30:57Z")
         fixture.store.refresh()
         try await Task.sleep(for: .milliseconds(600))
-        #expect(playCount == 1)
+        #expect(playedKinds == [.finalSeconds])
     }
 
     @Test func countdownDoesNotInvalidateTheWholeStore() {
@@ -224,7 +276,7 @@ struct TimerStoreTests {
         defer { fixture.close() }
         let invalid = Data("not-json".utf8)
         fixture.defaults.set(invalid, forKey: "com.m.PriceActionTimer.profiles")
-        let store = TimerStore(storage: fixture.storage, soundPlayer: TimerSoundPlayer(playSound: {}), automaticallySchedules: false)
+        let store = TimerStore(storage: fixture.storage, soundPlayer: TimerSoundPlayer(playSound: { _ in }), automaticallySchedules: false)
         defer { store.stop() }
         #expect(!store.profiles.isEmpty)
         #expect(fixture.defaults.data(forKey: "com.m.PriceActionTimer.profiles") == invalid)
@@ -249,7 +301,7 @@ private final class Fixture {
         let clock = TestClock(date: ISO8601DateFormatter().date(from: value)!)
         self.clock = clock
         let profile = TimerProfile(cycleDuration: 60, warningLeadTime: 10, timezoneIdentifier: "UTC")
-        store = TimerStore(profiles: [profile], storage: storage, now: { clock.date }, soundPlayer: soundPlayer ?? TimerSoundPlayer(playSound: {}), automaticallySchedules: automaticallySchedules)
+        store = TimerStore(profiles: [profile], storage: storage, now: { clock.date }, soundPlayer: soundPlayer ?? TimerSoundPlayer(playSound: { _ in }), automaticallySchedules: automaticallySchedules)
     }
 
     func close() {

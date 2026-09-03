@@ -24,6 +24,7 @@ final class TimerManager: ObservableObject {
     var warningLeadTime: TimeInterval { profile.warningLeadTime }
 
     private var warnedDeadline: Date?
+    private var finalWarnedDeadline: Date?
     private let notify: (TimerWarning) -> Void
 
     init(profile: TimerProfile, notify: @escaping (TimerWarning) -> Void) {
@@ -49,15 +50,26 @@ final class TimerManager: ObservableObject {
 
         let deadline = schedule.cycleDeadline(at: date, in: window)
         remainingTime = deadline.timeIntervalSince(date)
-        let isWarning = remainingTime <= warningLeadTime
+        let isFinalWarning = remainingTime <= TimerWarning.finalSecondsThreshold
+        let isWarning = remainingTime <= max(warningLeadTime, TimerWarning.finalSecondsThreshold)
         // A warning withdrawn before its threshold can be requested at the new threshold.
         if !isWarning, warnedDeadline == deadline { warnedDeadline = nil }
         let nextPhase: Phase = isWarning ? .warning : .running
         if phase != nextPhase { phase = nextPhase }
 
-        if isWarning, warnedDeadline != deadline {
+        let warningKind: TimerWarning.Kind?
+        if isFinalWarning, finalWarnedDeadline != deadline {
+            finalWarnedDeadline = deadline
             warnedDeadline = deadline
-            notify(TimerWarning(profileID: profile.id, duration: formattedCycleLength(), remaining: formatted(seconds: ceil(remainingTime))))
+            warningKind = .finalSeconds
+        } else if !isFinalWarning, isWarning, warnedDeadline != deadline {
+            warnedDeadline = deadline
+            warningKind = .initial
+        } else {
+            warningKind = nil
+        }
+        if let warningKind {
+            notify(TimerWarning(profileID: profile.id, duration: formattedCycleLength(), remaining: formatted(seconds: ceil(remainingTime)), kind: warningKind))
         }
     }
 
@@ -65,6 +77,7 @@ final class TimerManager: ObservableObject {
         if phase != .idle { phase = .idle }
         if remainingTime != cycleDuration { remainingTime = cycleDuration }
         warnedDeadline = nil
+        finalWarnedDeadline = nil
     }
 
     func formattedRemainingTime() -> String {

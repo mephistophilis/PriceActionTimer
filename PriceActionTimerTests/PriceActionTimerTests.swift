@@ -14,6 +14,7 @@ struct PriceActionTimerTests {
         #expect(manager.phase == .warning)
         #expect(warnings.count == 1)
         #expect(warnings.first?.remaining == "5s")
+        #expect(warnings.first?.kind == .finalSeconds)
 
         manager.update(at: date("2026-09-02T16:00:00Z"))
         #expect(manager.phase == .idle)
@@ -61,6 +62,7 @@ struct PriceActionTimerTests {
         manager.apply(profile: profile)
         manager.update(at: date("2026-09-02T09:30:51Z"))
         #expect(warnings.count == 1)
+        #expect(warnings.first?.kind == .initial)
         var edited = profile
         edited.warningLeadTime = 11
         manager.apply(profile: edited)
@@ -72,6 +74,72 @@ struct PriceActionTimerTests {
         #expect(warnings.count == 1)
         manager.update(at: date("2026-09-02T09:31:50Z"))
         #expect(warnings.count == 2)
+        #expect(warnings.last?.kind == .initial)
+    }
+
+    @Test func warningMovesFromInitialToFinalSecondsOncePerDeadline() {
+        let profile = makeProfile()
+        var warnings: [TimerWarning] = []
+        let manager = TimerManager(profile: profile, notify: { warnings.append($0) })
+
+        manager.update(at: date("2026-09-02T09:30:50Z"))
+        #expect(manager.remainingTime == 10)
+        #expect(warnings.map(\.kind) == [.initial])
+
+        manager.update(at: date("2026-09-02T09:30:54Z").addingTimeInterval(0.5))
+        #expect(manager.remainingTime > 5)
+        #expect(warnings.map(\.kind) == [.initial])
+
+        manager.update(at: date("2026-09-02T09:30:55Z"))
+        #expect(manager.remainingTime == 5)
+        #expect(warnings.map(\.kind) == [.initial, .finalSeconds])
+
+        for offset in [0.2, 0.8, 2.9, 4.9] {
+            manager.update(at: date("2026-09-02T09:30:55Z").addingTimeInterval(offset))
+        }
+        var edited = profile
+        edited.warningLeadTime = 20
+        manager.apply(profile: edited)
+        manager.update(at: date("2026-09-02T09:30:59Z").addingTimeInterval(0.9))
+        #expect(warnings.map(\.kind) == [.initial, .finalSeconds])
+
+        manager.update(at: date("2026-09-02T09:31:00Z"))
+        #expect(manager.phase == .running)
+        manager.update(at: date("2026-09-02T09:31:50Z"))
+        manager.update(at: date("2026-09-02T09:31:55Z"))
+        #expect(warnings.map(\.kind) == [.initial, .finalSeconds, .initial, .finalSeconds])
+    }
+
+    @Test func startingInsideFinalSecondsEmitsOnlyFinalWarning() {
+        var warnings: [TimerWarning] = []
+        let manager = TimerManager(profile: makeProfile(), notify: { warnings.append($0) })
+
+        manager.update(at: date("2026-09-02T09:30:57Z"))
+
+        #expect(manager.phase == .warning)
+        #expect(warnings.map(\.kind) == [.finalSeconds])
+        manager.update(at: date("2026-09-02T09:30:58Z"))
+        #expect(warnings.map(\.kind) == [.finalSeconds])
+    }
+
+    @Test func shortWarningLeadStillEntersWarningAtFiveSeconds() {
+        var profile = makeProfile()
+        profile.warningLeadTime = 3
+        var warnings: [TimerWarning] = []
+        let manager = TimerManager(profile: profile, notify: { warnings.append($0) })
+
+        manager.update(at: date("2026-09-02T09:30:54Z"))
+        #expect(manager.remainingTime == 6)
+        #expect(manager.phase == .running)
+        #expect(warnings.isEmpty)
+
+        manager.update(at: date("2026-09-02T09:30:55Z"))
+        #expect(manager.phase == .warning)
+        #expect(warnings.map(\.kind) == [.finalSeconds])
+        manager.update(at: date("2026-09-02T09:30:56Z"))
+        #expect(warnings.map(\.kind) == [.finalSeconds])
+        manager.update(at: date("2026-09-02T09:30:57Z"))
+        #expect(warnings.map(\.kind) == [.finalSeconds])
     }
 
     @Test func delayedTicksSkipExpiredWarnings() {
@@ -85,6 +153,7 @@ struct PriceActionTimerTests {
         manager.update(at: date("2026-09-02T09:34:51Z"))
         #expect(warnings.count == 1)
         #expect(warnings.first?.remaining == "9s")
+        #expect(warnings.first?.kind == .initial)
     }
 
     @Test func timezoneAndEnabledWeekdaysUseTheProfileCalendar() {

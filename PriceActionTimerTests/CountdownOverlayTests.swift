@@ -18,10 +18,29 @@ struct CountdownOverlayTests {
         fixture.store.refresh()
         try await settle()
         #expect(fixture.overlay.entries.first?.seconds == 9)
+        fixture.clock.date = date("2026-09-02T09:30:55Z")
+        fixture.store.refresh()
+        try await settle()
+        #expect(fixture.overlay.entries.first?.seconds == 5)
         fixture.clock.date = date("2026-09-02T09:31:00Z")
         fixture.store.refresh()
         try await settle()
         #expect(fixture.overlay.entries.isEmpty)
+    }
+
+    @Test func overlayKeepsCycleLabelWhileEnteringFinalSeconds() async throws {
+        let profile = TimerProfile(cycleDuration: 300, warningLeadTime: 10, timezoneIdentifier: "UTC")
+        let fixture = OverlayFixture(at: "2026-09-02T09:34:50Z", profiles: [profile])
+        defer { fixture.close() }
+        try await settle()
+
+        #expect(fixture.overlay.entries.first?.title == "5m")
+        #expect(fixture.overlay.entries.first?.countdown == "10s")
+        fixture.clock.date = date("2026-09-02T09:34:55Z")
+        fixture.store.refresh()
+        try await settle()
+        #expect(fixture.overlay.entries.first?.title == "5m")
+        #expect(fixture.overlay.entries.first?.countdown == "5s")
     }
 
     @Test func overlayUsesConfiguredWarningTimeAndRoundsSecondsUp() async throws {
@@ -157,7 +176,7 @@ private final class OverlayFixture {
             profiles: profiles ?? [TimerProfile(cycleDuration: 60, warningLeadTime: 10, timezoneIdentifier: "UTC")],
             storage: TimerProfileStorage(userDefaults: defaults, legacyFileURL: nil),
             now: { clock.date },
-            soundPlayer: TimerSoundPlayer(playSound: {}),
+            soundPlayer: TimerSoundPlayer(playSound: { _ in }),
             automaticallySchedules: false
         )
         overlay = CountdownOverlayController(timerStore: store, settings: settings, presentsWindows: presentsWindows, now: { clock.date })

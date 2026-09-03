@@ -35,7 +35,7 @@ struct CountdownOverlayView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.65)
                         .contentTransition(.numericText(countsDown: true))
-                        .foregroundStyle(entry.seconds <= 3 ? Color.orange : .white)
+                        .foregroundStyle(TimeInterval(entry.seconds) <= TimerWarning.finalSecondsThreshold ? Color.orange : .white)
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 10)
