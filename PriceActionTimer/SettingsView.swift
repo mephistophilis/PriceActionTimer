@@ -26,13 +26,25 @@ struct SettingsView: View {
                         isRunning: timerStore.manager(for: profile.id).map { $0.phase != .idle } ?? false
                     )
                     .tag(profile.id)
+                    .contextMenu {
+                        Button {
+                            cloneTimer(profileID: profile.id)
+                        } label: {
+                            Label("Clone", systemImage: "doc.on.doc")
+                        }
+                        Button(role: .destructive) {
+                            deleteTimer(profileID: profile.id)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
                 }
                 .onDelete(perform: timerStore.removeProfiles)
             }
             .frame(minWidth: 220)
             .navigationTitle("Timers")
             .toolbar {
-                ToolbarItem {
+                ToolbarItemGroup(placement: .navigation) {
                     Menu {
                         Button {
                             let previousSelection = selection
@@ -42,9 +54,8 @@ struct SettingsView: View {
                             Label("New timer", systemImage: "plus")
                         }
                         Button {
-                            if let sourceID = selection,
-                               let cloneID = timerStore.cloneProfile(sourceID) {
-                                selection = cloneID
+                            if let selection {
+                                cloneTimer(profileID: selection)
                             }
                         } label: {
                             Label("Clone selected timer", systemImage: "doc.on.doc")
@@ -53,6 +64,16 @@ struct SettingsView: View {
                     } label: {
                         Label("Add timer", systemImage: "plus")
                     }
+                    Button(role: .destructive) {
+                        if let selection {
+                            deleteTimer(profileID: selection)
+                        }
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    .labelStyle(.iconOnly)
+                    .disabled(selection == nil)
+                    .help("Delete selected timer")
                 }
             }
         } detail: {
@@ -236,17 +257,6 @@ struct SettingsView: View {
                         .frame(width: controlWidth, alignment: .trailing)
                     }
                 }
-
-                SettingsCard(title: "Danger", systemImage: "exclamationmark.triangle") {
-                    SettingsRow(title: "Delete timer") {
-                        Button(role: .destructive) {
-                            deleteCurrent(profileID: profile.wrappedValue.id)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                        .frame(width: controlWidth, alignment: .trailing)
-                    }
-                }
             }
             .padding(20)
         }
@@ -304,7 +314,13 @@ struct SettingsView: View {
         selection = timerStore.profiles.first?.id
     }
 
-    private func deleteCurrent(profileID: UUID) {
+    private func cloneTimer(profileID: UUID) {
+        if let cloneID = timerStore.cloneProfile(profileID) {
+            selection = cloneID
+        }
+    }
+
+    private func deleteTimer(profileID: UUID) {
         if let index = timerStore.profiles.firstIndex(where: { $0.id == profileID }) {
             timerStore.removeProfiles(at: IndexSet(integer: index))
             ensureSelection()
