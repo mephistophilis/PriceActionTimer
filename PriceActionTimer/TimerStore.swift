@@ -64,6 +64,23 @@ final class TimerStore: ObservableObject {
         selectedProfileID = profile.id
     }
 
+    @discardableResult
+    func cloneProfile(_ id: UUID) -> UUID? {
+        guard let source = profiles.first(where: { $0.id == id }) else { return nil }
+        let clone = TimerProfile(
+            cycleDuration: source.cycleDuration,
+            warningLeadTime: source.warningLeadTime,
+            isEnabled: source.isEnabled,
+            watchStart: source.watchStart,
+            watchEnd: source.watchEnd,
+            enabledWeekdays: source.enabledWeekdays,
+            timezoneIdentifier: source.timezoneIdentifier
+        )
+        setProfiles(profiles + [clone])
+        selectedProfileID = clone.id
+        return clone.id
+    }
+
     func updateProfile(_ profile: TimerProfile) {
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
         var updated = profiles

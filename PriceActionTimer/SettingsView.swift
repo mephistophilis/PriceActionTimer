@@ -33,12 +33,25 @@ struct SettingsView: View {
             .navigationTitle("Timers")
             .toolbar {
                 ToolbarItem {
-                    Button {
-                        let previousSelection = selection
-                        timerStore.addProfile()
-                        selection = timerStore.profiles.last?.id ?? previousSelection
+                    Menu {
+                        Button {
+                            let previousSelection = selection
+                            timerStore.addProfile()
+                            selection = timerStore.profiles.last?.id ?? previousSelection
+                        } label: {
+                            Label("New timer", systemImage: "plus")
+                        }
+                        Button {
+                            if let sourceID = selection,
+                               let cloneID = timerStore.cloneProfile(sourceID) {
+                                selection = cloneID
+                            }
+                        } label: {
+                            Label("Clone selected timer", systemImage: "doc.on.doc")
+                        }
+                        .disabled(selection == nil)
                     } label: {
-                        Label("New timer", systemImage: "plus")
+                        Label("Add timer", systemImage: "plus")
                     }
                 }
             }

@@ -5,6 +5,67 @@ import Testing
 
 @MainActor
 struct TimerStoreTests {
+    @Test(arguments: [true, false])
+    func cloningPreservesSettingsWithAnIndependentIdentity(isEnabled: Bool) throws {
+        let fixture = Fixture()
+        defer { fixture.close() }
+        var source = fixture.store.profiles[0]
+        source.cycleDuration = 900
+        source.warningLeadTime = 30
+        source.isEnabled = isEnabled
+        source.watchStart = DateComponents(hour: 8, minute: 15)
+        source.watchEnd = DateComponents(hour: 17, minute: 45)
+        source.enabledWeekdays = [2, 4, 6]
+        source.timezoneIdentifier = "America/New_York"
+        fixture.store.updateProfile(source)
+        let originalManager = try #require(fixture.store.manager(for: source.id))
+
+        let cloneID = try #require(fixture.store.cloneProfile(source.id))
+        var clone = try #require(fixture.store.profiles.first { $0.id == cloneID })
+        #expect(cloneID != source.id)
+        #expect(fixture.store.profiles.count == 2)
+        #expect(clone.cycleDuration == source.cycleDuration)
+        #expect(clone.warningLeadTime == source.warningLeadTime)
+        #expect(clone.isEnabled == source.isEnabled)
+        #expect(clone.watchStart == source.watchStart)
+        #expect(clone.watchEnd == source.watchEnd)
+        #expect(clone.enabledWeekdays == source.enabledWeekdays)
+        #expect(clone.timezoneIdentifier == source.timezoneIdentifier)
+        #expect(fixture.storage.loadProfiles() == [source, clone])
+        let clonedManager = try #require(fixture.store.manager(for: cloneID))
+        #expect(clonedManager !== originalManager)
+        #expect(clonedManager.profile == clone)
+        if isEnabled {
+            #expect(fixture.store.selectedProfileID == cloneID)
+            #expect(fixture.storage.selectedProfileID == cloneID)
+        }
+
+        clone.cycleDuration = 300
+        clone.enabledWeekdays.insert(3)
+        fixture.store.updateProfile(clone)
+        #expect(fixture.store.profiles.first == source)
+        #expect(originalManager.profile == source)
+        #expect(clonedManager.profile == clone)
+        #expect(fixture.storage.loadProfiles() == [source, clone])
+
+        fixture.store.removeProfiles(at: IndexSet(integer: 1))
+        #expect(fixture.store.profiles == [source])
+        #expect(fixture.store.manager(for: source.id) === originalManager)
+        #expect(fixture.store.manager(for: cloneID) == nil)
+    }
+
+    @Test func cloningAMissingTimerLeavesProfilesAndSelectionUnchanged() {
+        let fixture = Fixture()
+        defer { fixture.close() }
+        let profiles = fixture.store.profiles
+        let selection = fixture.store.selectedProfileID
+        let savedProfiles = fixture.storage.loadProfiles()
+        #expect(fixture.store.cloneProfile(UUID()) == nil)
+        #expect(fixture.store.profiles == profiles)
+        #expect(fixture.store.selectedProfileID == selection)
+        #expect(fixture.storage.loadProfiles() == savedProfiles)
+    }
+
     @Test func profileEditsPersistAndUpdateTheExistingManager() throws {
         let fixture = Fixture()
         defer { fixture.close() }
