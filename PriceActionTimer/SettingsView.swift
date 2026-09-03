@@ -44,26 +44,27 @@ struct SettingsView: View {
             .frame(minWidth: 220)
             .navigationTitle("Timers")
             .toolbar {
-                ToolbarItemGroup(placement: .navigation) {
-                    Menu {
-                        Button {
-                            let previousSelection = selection
-                            timerStore.addProfile()
-                            selection = timerStore.profiles.last?.id ?? previousSelection
-                        } label: {
-                            Label("New timer", systemImage: "plus")
-                        }
-                        Button {
-                            if let selection {
-                                cloneTimer(profileID: selection)
-                            }
-                        } label: {
-                            Label("Clone selected timer", systemImage: "doc.on.doc")
-                        }
-                        .disabled(selection == nil)
+                ToolbarItem {
+                    Button {
+                        let previousSelection = selection
+                        timerStore.addProfile()
+                        selection = timerStore.profiles.last?.id ?? previousSelection
                     } label: {
-                        Label("Add timer", systemImage: "plus")
+                        Label("New timer", systemImage: "plus")
                     }
+                    .help("New timer")
+                }
+                ToolbarItemGroup(placement: .navigation) {
+                    Button {
+                        if let selection {
+                            cloneTimer(profileID: selection)
+                        }
+                    } label: {
+                        Label("Clone", systemImage: "doc.on.doc")
+                    }
+                    .labelStyle(.iconOnly)
+                    .disabled(selection == nil)
+                    .help("Clone selected timer")
                     Button(role: .destructive) {
                         if let selection {
                             deleteTimer(profileID: selection)
