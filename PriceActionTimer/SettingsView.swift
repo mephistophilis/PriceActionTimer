@@ -15,6 +15,7 @@ struct SettingsView: View {
     @ObservedObject var overlaySettings: CountdownOverlaySettings
     var previewCountdown: () -> Void = {}
     @State private var selection: UUID?
+    @State private var pendingDeletion: [TimerProfile]?
     private let controlWidth: CGFloat = 220
 
     var body: some View {
@@ -33,13 +34,18 @@ struct SettingsView: View {
                             Label("Clone", systemImage: "doc.on.doc")
                         }
                         Button(role: .destructive) {
-                            deleteTimer(profileID: profile.id)
+                            requestDeletion(profileIDs: [profile.id])
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
                     }
                 }
-                .onDelete(perform: timerStore.removeProfiles)
+                .onDelete { offsets in
+                    let ids = timerStore.profiles.enumerated().compactMap {
+                        offsets.contains($0.offset) ? $0.element.id : nil
+                    }
+                    requestDeletion(profileIDs: Set(ids))
+                }
             }
             .frame(minWidth: 220)
             .navigationTitle("Timers")
@@ -67,7 +73,7 @@ struct SettingsView: View {
                     .help("Clone selected timer")
                     Button(role: .destructive) {
                         if let selection {
-                            deleteTimer(profileID: selection)
+                            requestDeletion(profileIDs: [selection])
                         }
                     } label: {
                         Label("Delete", systemImage: "trash")
@@ -101,6 +107,22 @@ struct SettingsView: View {
                 }
                 .navigationTitle("Settings")
             }
+        }
+        .alert(
+            pendingDeletion?.count == 1 ? "Delete timer?" : "Delete timers?",
+            isPresented: Binding(
+                get: { pendingDeletion != nil },
+                set: { if !$0 { pendingDeletion = nil } }
+            ),
+            presenting: pendingDeletion
+        ) { profiles in
+            Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
+            Button("Delete", role: .destructive) {
+                deleteTimers(profiles)
+            }
+        } message: { profiles in
+            Text(profiles.map { $0.generatedName() }.joined(separator: "\n") + "\n\nThis cannot be undone.")
         }
         .onAppear(perform: ensureSelection)
         .onAppear {
@@ -321,11 +343,19 @@ struct SettingsView: View {
         }
     }
 
-    private func deleteTimer(profileID: UUID) {
-        if let index = timerStore.profiles.firstIndex(where: { $0.id == profileID }) {
-            timerStore.removeProfiles(at: IndexSet(integer: index))
-            ensureSelection()
-        }
+    private func requestDeletion(profileIDs: Set<UUID>) {
+        let profiles = timerStore.profiles.filter { profileIDs.contains($0.id) }
+        guard !profiles.isEmpty else { return }
+        pendingDeletion = profiles
+    }
+
+    private func deleteTimers(_ profiles: [TimerProfile]) {
+        let ids = Set(profiles.map(\.id))
+        let offsets = IndexSet(timerStore.profiles.enumerated().compactMap {
+            ids.contains($0.element.id) ? $0.offset : nil
+        })
+        timerStore.removeProfiles(at: offsets)
+        ensureSelection()
     }
 
     private func dateBinding(for components: Binding<DateComponents>) -> Binding<Date> {
