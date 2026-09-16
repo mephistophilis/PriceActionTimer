@@ -66,7 +66,7 @@ private struct MenuBarCountdownIcon: View {
             Image(nsImage: MenuBarCircleImage.make())
                 .resizable()
                 .renderingMode(.original)
-                .frame(width: 16, height: 16)
+                .frame(width: 19, height: 19)
                 .accessibilityLabel("PriceAction Timer")
                 .accessibilityValue("No enabled timer")
         }
@@ -95,7 +95,7 @@ private struct MenuBarCountdownCircle: View {
         ))
             .resizable()
             .renderingMode(.original)
-            .frame(width: 16, height: 16)
+            .frame(width: 19, height: 19)
             .accessibilityLabel("PriceAction Timer")
             .accessibilityValue(manager.phase == .idle ? "Idle" : "\(stage.label), \(manager.compactLabel())")
     }
@@ -129,9 +129,9 @@ private enum MenuBarCountdownStage {
 private enum MenuBarCircleImage {
     @MainActor
     static func make(progress: Double? = nil, color: NSColor = .secondaryLabelColor) -> NSImage {
-        let size = NSSize(width: 16, height: 16)
+        let size = NSSize(width: 19, height: 19)
         let image = NSImage(size: size, flipped: false) { _ in
-            let circleRect = NSRect(x: 1.5, y: 1.5, width: 13, height: 13)
+            let circleRect = NSRect(x: 1, y: 1, width: 17, height: 17)
             let background = NSBezierPath(ovalIn: circleRect)
             NSColor.white.withAlphaComponent(0.96).setFill()
             background.fill()
@@ -141,10 +141,10 @@ private enum MenuBarCircleImage {
 
             if let progress, progress > 0 {
                 let sector = NSBezierPath()
-                sector.move(to: NSPoint(x: 8, y: 8))
+                sector.move(to: NSPoint(x: 9.5, y: 9.5))
                 sector.appendArc(
-                    withCenter: NSPoint(x: 8, y: 8),
-                    radius: 6.5,
+                    withCenter: NSPoint(x: 9.5, y: 9.5),
+                    radius: 8.5,
                     startAngle: 90,
                     endAngle: 90 - 360 * min(max(progress, 0), 1),
                     clockwise: true
