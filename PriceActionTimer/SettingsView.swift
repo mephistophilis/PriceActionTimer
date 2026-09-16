@@ -24,7 +24,7 @@ struct SettingsView: View {
                 ForEach(timerStore.profiles) { profile in
                     SettingsListRow(
                         profile: profile,
-                        isRunning: timerStore.manager(for: profile.id).map { $0.phase != .idle } ?? false
+                        isEnabled: profile.isEnabled
                     )
                     .tag(profile.id)
                     .contextMenu {
@@ -145,7 +145,7 @@ struct SettingsView: View {
 
     private var desktopCountdownSettings: some View {
         SettingsCard(title: "Desktop countdown", systemImage: "rectangle.on.rectangle") {
-            SettingsRow(title: "Show countdown", subtitle: "For all timers, during their warning period") {
+            SettingsRow(title: "Show countdown", subtitle: "For the enabled timer, during its warning period") {
                 Toggle("Show desktop countdown", isOn: $overlaySettings.isEnabled)
                     .toggleStyle(.switch)
                     .labelsHidden()
@@ -381,12 +381,12 @@ struct SettingsView: View {
 
 private struct SettingsListRow: View {
     let profile: TimerProfile
-    let isRunning: Bool
+    let isEnabled: Bool
 
     var body: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(isRunning ? Color.green : Color.gray)
+                .fill(isEnabled ? Color.green : Color.gray)
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 4) {
                 Text(cycleName())

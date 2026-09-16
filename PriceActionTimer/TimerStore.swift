@@ -45,12 +45,19 @@ final class TimerStore: ObservableObject {
         automaticallySchedules: Bool = true
     ) {
         let storage = storage ?? TimerProfileStorage()
+        let storedProfiles = profiles == nil ? storage.loadProfiles() : nil
+        let loadedProfiles = profiles ?? storedProfiles ?? [.initial]
+        let preferredEnabledID = storage.selectedProfileID
         self.storage = storage
         self.now = now
         self.soundPlayer = soundPlayer ?? TimerSoundPlayer()
         self.automaticallySchedules = automaticallySchedules
-        self.profiles = (profiles ?? storage.loadProfiles() ?? [.initial]).map { $0.normalized() }
-        self.selectedProfileID = storage.selectedProfileID
+        self.profiles = Self.withSingleEnabledProfile(loadedProfiles, preferredID: preferredEnabledID)
+        self.selectedProfileID = preferredEnabledID
+
+        if let storedProfiles, self.profiles != storedProfiles {
+            storage.saveProfiles(self.profiles)
+        }
 
         syncManagersWithProfiles()
         refreshSelectionAfterChange()
@@ -60,7 +67,7 @@ final class TimerStore: ObservableObject {
 
     func addProfile() {
         let profile = TimerProfile(cycleDuration: 60, warningLeadTime: 10)
-        setProfiles(profiles + [profile])
+        setProfiles(profiles + [profile], preferredEnabledID: profile.id)
         selectedProfileID = profile.id
     }
 
@@ -76,7 +83,7 @@ final class TimerStore: ObservableObject {
             enabledWeekdays: source.enabledWeekdays,
             timezoneIdentifier: source.timezoneIdentifier
         )
-        setProfiles(profiles + [clone])
+        setProfiles(profiles + [clone], preferredEnabledID: clone.isEnabled ? clone.id : nil)
         selectedProfileID = clone.id
         return clone.id
     }
@@ -85,7 +92,7 @@ final class TimerStore: ObservableObject {
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
         var updated = profiles
         updated[index] = profile.normalized()
-        setProfiles(updated)
+        setProfiles(updated, preferredEnabledID: profile.isEnabled ? profile.id : nil)
     }
 
     func removeProfiles(at offsets: IndexSet) {
@@ -93,13 +100,27 @@ final class TimerStore: ObservableObject {
         setProfiles(remaining)
     }
 
-    private func setProfiles(_ updated: [TimerProfile]) {
+    private func setProfiles(_ updated: [TimerProfile], preferredEnabledID: UUID? = nil) {
+        let updated = Self.withSingleEnabledProfile(updated, preferredID: preferredEnabledID)
         guard profiles != updated else { return }
         profiles = updated
         storage.saveProfiles(profiles)
         syncManagersWithProfiles()
         refreshSelectionAfterChange()
         refresh()
+    }
+
+    private static func withSingleEnabledProfile(_ profiles: [TimerProfile], preferredID: UUID?) -> [TimerProfile] {
+        let normalized = profiles.map { $0.normalized() }
+        let enabledID = preferredID.flatMap { preferredID in
+            normalized.first(where: { $0.id == preferredID && $0.isEnabled })?.id
+        } ?? normalized.first(where: \.isEnabled)?.id
+
+        return normalized.map { profile in
+            var profile = profile
+            profile.isEnabled = profile.id == enabledID
+            return profile
+        }
     }
 
     func manager(for id: UUID?) -> TimerManager? {

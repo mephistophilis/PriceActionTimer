@@ -22,6 +22,7 @@ struct TimerStoreTests {
 
         let cloneID = try #require(fixture.store.cloneProfile(source.id))
         var clone = try #require(fixture.store.profiles.first { $0.id == cloneID })
+        let storedSource = try #require(fixture.store.profiles.first { $0.id == source.id })
         #expect(cloneID != source.id)
         #expect(fixture.store.profiles.count == 2)
         #expect(clone.cycleDuration == source.cycleDuration)
@@ -31,7 +32,8 @@ struct TimerStoreTests {
         #expect(clone.watchEnd == source.watchEnd)
         #expect(clone.enabledWeekdays == source.enabledWeekdays)
         #expect(clone.timezoneIdentifier == source.timezoneIdentifier)
-        #expect(fixture.storage.loadProfiles() == [source, clone])
+        #expect(!storedSource.isEnabled)
+        #expect(fixture.storage.loadProfiles() == [storedSource, clone])
         let clonedManager = try #require(fixture.store.manager(for: cloneID))
         #expect(clonedManager !== originalManager)
         #expect(clonedManager.profile == clone)
@@ -43,13 +45,13 @@ struct TimerStoreTests {
         clone.cycleDuration = 300
         clone.enabledWeekdays.insert(3)
         fixture.store.updateProfile(clone)
-        #expect(fixture.store.profiles.first == source)
-        #expect(originalManager.profile == source)
+        #expect(fixture.store.profiles.first == storedSource)
+        #expect(originalManager.profile == storedSource)
         #expect(clonedManager.profile == clone)
-        #expect(fixture.storage.loadProfiles() == [source, clone])
+        #expect(fixture.storage.loadProfiles() == [storedSource, clone])
 
         fixture.store.removeProfiles(at: IndexSet(integer: 1))
-        #expect(fixture.store.profiles == [source])
+        #expect(fixture.store.profiles == [storedSource])
         #expect(fixture.store.manager(for: source.id) === originalManager)
         #expect(fixture.store.manager(for: cloneID) == nil)
     }
@@ -84,6 +86,43 @@ struct TimerStoreTests {
         #expect(fixture.store.profiles[0].cycleDuration == manager.cycleDuration)
         #expect(fixture.store.profiles[0].warningLeadTime == manager.warningLeadTime)
         #expect(fixture.storage.loadProfiles() == fixture.store.profiles)
+    }
+
+    @Test func addingAndEnablingProfilesKeepsOnlyOneEnabled() throws {
+        let fixture = Fixture()
+        defer { fixture.close() }
+        let firstID = fixture.store.profiles[0].id
+
+        fixture.store.addProfile()
+        let secondID = try #require(fixture.store.profiles.last?.id)
+        #expect(fixture.store.profiles.first { $0.id == firstID }?.isEnabled == false)
+        #expect(fixture.store.profiles.first { $0.id == secondID }?.isEnabled == true)
+
+        var first = try #require(fixture.store.profiles.first { $0.id == firstID })
+        first.isEnabled = true
+        fixture.store.updateProfile(first)
+        #expect(fixture.store.profiles.first { $0.id == firstID }?.isEnabled == true)
+        #expect(fixture.store.profiles.first { $0.id == secondID }?.isEnabled == false)
+        #expect(fixture.store.profiles.filter(\.isEnabled).map(\.id) == [firstID])
+        #expect(fixture.store.selectedProfileID == firstID)
+        #expect(fixture.storage.loadProfiles() == fixture.store.profiles)
+    }
+
+    @Test func startupRepairsPreviouslySavedMultipleEnabledProfiles() {
+        let suiteName = "TimerStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let storage = TimerProfileStorage(userDefaults: defaults, legacyFileURL: nil)
+        let first = TimerProfile(cycleDuration: 60, warningLeadTime: 10)
+        let second = TimerProfile(cycleDuration: 300, warningLeadTime: 10)
+        storage.saveProfiles([first, second])
+        storage.selectedProfileID = second.id
+
+        let store = TimerStore(storage: storage, soundPlayer: TimerSoundPlayer(playSound: { _ in }), automaticallySchedules: false)
+        defer { store.stop() }
+        #expect(store.profiles.filter(\.isEnabled).map(\.id) == [second.id])
+        #expect(storage.loadProfiles() == store.profiles)
+        #expect(store.selectedProfileID == second.id)
     }
 
     @Test func disablingAndDeletingProfilesUpdatesManagersAndSelection() throws {
@@ -190,7 +229,7 @@ struct TimerStoreTests {
         let savedData = try #require(fixture.defaults.data(forKey: "com.m.PriceActionTimer.profiles"))
         fixture.store.selectedProfileID = fixture.store.profiles[0].id
         #expect(fixture.defaults.data(forKey: "com.m.PriceActionTimer.profiles") == savedData)
-        #expect(fixture.storage.selectedProfileID == fixture.store.profiles[0].id)
+        #expect(fixture.storage.selectedProfileID == fixture.store.profiles[1].id)
     }
 
     @Test(arguments: ["stop", "disable", "delete"], ["2026-09-02T09:30:50Z", "2026-09-02T09:30:55Z"])
@@ -248,8 +287,7 @@ struct TimerStoreTests {
         #expect(playedKinds == [.initial, .finalSeconds, .initial])
     }
 
-    @Test(arguments: [false, true])
-    func simultaneousTimersPlayOneSoundPerCycle(deleteOneBeforePlayback: Bool) async throws {
+    @Test func switchingEnabledTimerCancelsPreviousPendingSound() async throws {
         var playedKinds: [TimerWarning.Kind] = []
         let soundPlayer = TimerSoundPlayer(playSound: { playedKinds.append($0) })
         let fixture = Fixture(at: "2026-09-02T09:30:50Z", soundPlayer: soundPlayer)
@@ -258,12 +296,8 @@ struct TimerStoreTests {
         var second = try #require(fixture.store.profiles.last)
         second.timezoneIdentifier = "UTC"
         fixture.store.updateProfile(second)
-        for profile in fixture.store.profiles {
-            #expect(fixture.store.manager(for: profile.id)?.phase == .warning)
-        }
-        if deleteOneBeforePlayback {
-            fixture.store.removeProfiles(at: IndexSet(integer: 0))
-        }
+        #expect(fixture.store.manager(for: fixture.store.profiles[0].id)?.phase == .idle)
+        #expect(fixture.store.manager(for: second.id)?.phase == .warning)
         fixture.store.refresh()
         try await Task.sleep(for: .milliseconds(600))
         #expect(playedKinds == [.initial])

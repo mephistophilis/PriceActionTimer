@@ -50,34 +50,31 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                let activeTimers = timerStore.profiles.compactMap { profile -> TimerProfile? in
-                    guard profile.isEnabled else { return nil }
-                    guard let mgr = timerStore.manager(for: profile.id) else { return nil }
-                    guard mgr.phase != .idle else { return nil }
-                    return profile
+                let activeTimer = timerStore.profiles.first { profile in
+                    guard profile.isEnabled,
+                          let manager = timerStore.manager(for: profile.id) else { return false }
+                    return manager.phase != .idle
                 }
 
-                if activeTimers.isEmpty {
+                if let activeTimer {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Running timer")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(.green)
+                                .frame(width: 6, height: 6)
+                            Text(activeTimer.generatedName())
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                        }
+                    }
+                } else {
                     Text("No running timers")
                         .font(.headline)
                         .foregroundStyle(.secondary)
-                } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Running timers (\(activeTimers.count))")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        ForEach(activeTimers, id: \.id) { profile in
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(.green)
-                                    .frame(width: 6, height: 6)
-                                Text(profile.generatedName())
-                                    .font(.subheadline)
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                            }
-                        }
-                    }
                 }
             }
 

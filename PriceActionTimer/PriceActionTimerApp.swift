@@ -31,7 +31,7 @@ struct PriceActionTimerApp: App {
                 .padding()
                 .frame(width: 280)
         } label: {
-            Label("PriceAction", systemImage: "timer")
+            MenuBarCountdownIcon(timerStore: timerStore)
         }
 
         WindowGroup {
@@ -49,6 +49,50 @@ struct PriceActionTimerApp: App {
     static var isTesting: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
             || NSClassFromString("XCTestCase") != nil
+    }
+}
+
+private struct MenuBarCountdownIcon: View {
+    @ObservedObject var timerStore: TimerStore
+
+    var body: some View {
+        if let profile = timerStore.selectedProfile,
+           let manager = timerStore.manager(for: profile.id) {
+            MenuBarCountdownRing(manager: manager)
+        } else {
+            Circle()
+                .stroke(.secondary.opacity(0.55), lineWidth: 2)
+                .frame(width: 16, height: 16)
+                .accessibilityLabel("PriceAction Timer")
+                .accessibilityValue("No enabled timer")
+        }
+    }
+}
+
+private struct MenuBarCountdownRing: View {
+    @ObservedObject var manager: TimerManager
+
+    private var remainingProgress: Double {
+        guard manager.phase != .idle, manager.cycleDuration > 0 else { return 0 }
+        return min(max(manager.remainingTime / manager.cycleDuration, 0), 1)
+    }
+
+    private var progressColor: Color {
+        manager.phase == .warning ? .orange : .primary
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(.secondary.opacity(0.35), lineWidth: 2)
+            Circle()
+                .trim(from: 0, to: remainingProgress)
+                .stroke(progressColor, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 16, height: 16)
+        .accessibilityLabel("PriceAction Timer")
+        .accessibilityValue(manager.phase == .idle ? "Idle" : manager.compactLabel())
     }
 }
 

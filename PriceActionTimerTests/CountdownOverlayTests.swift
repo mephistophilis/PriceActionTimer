@@ -71,23 +71,23 @@ struct CountdownOverlayTests {
         #expect(fixture.overlay.entries.isEmpty)
     }
 
-    @Test func multipleWarningsTrackProfileDeletionAndNewTimers() async throws {
+    @Test func overlayTracksOnlyTheEnabledTimer() async throws {
         let first = TimerProfile(cycleDuration: 60, warningLeadTime: 10, timezoneIdentifier: "UTC")
         let second = TimerProfile(cycleDuration: 120, warningLeadTime: 70, timezoneIdentifier: "UTC")
         let fixture = OverlayFixture(profiles: [first, second])
         defer { fixture.close() }
         try await settle()
-        #expect(fixture.overlay.entries.map(\.id) == [first.id.uuidString, second.id.uuidString])
+        #expect(fixture.overlay.entries.map(\.id) == [first.id.uuidString])
         fixture.store.removeProfiles(at: IndexSet(integer: 0))
         try await settle()
-        #expect(fixture.overlay.entries.map(\.id) == [second.id.uuidString])
+        #expect(fixture.overlay.entries.isEmpty)
 
         fixture.store.addProfile()
         var added = try #require(fixture.store.profiles.last)
         added.timezoneIdentifier = "UTC"
         fixture.store.updateProfile(added)
         try await settle()
-        #expect(fixture.overlay.entries.map(\.id) == [second.id.uuidString, added.id.uuidString])
+        #expect(fixture.overlay.entries.map(\.id) == [added.id.uuidString])
         fixture.clock.date = date("2026-09-02T09:30:51Z")
         fixture.store.refresh()
         try await settle()
