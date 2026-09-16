@@ -81,35 +81,65 @@ private struct MenuBarCountdownRing: View {
         return min(max(manager.remainingTime / manager.cycleDuration, 0), 1)
     }
 
-    private var progressColor: Color {
-        manager.phase == .warning ? .orange : .primary
+    private var stage: MenuBarCountdownStage {
+        guard manager.phase != .idle else { return .idle }
+        if manager.remainingTime <= TimerWarning.finalSecondsThreshold { return .finalSeconds }
+        if manager.phase == .warning { return .warning }
+        return .running
     }
 
     var body: some View {
-        Image(nsImage: MenuBarRingImage.make(progress: manager.phase == .idle ? nil : remainingProgress))
+        Image(nsImage: MenuBarRingImage.make(
+            progress: manager.phase == .idle ? nil : remainingProgress,
+            color: stage.color
+        ))
             .resizable()
-            .renderingMode(.template)
-            .foregroundStyle(progressColor)
+            .renderingMode(.original)
             .frame(width: 16, height: 16)
             .accessibilityLabel("PriceAction Timer")
-            .accessibilityValue(manager.phase == .idle ? "Idle" : manager.compactLabel())
+            .accessibilityValue(manager.phase == .idle ? "Idle" : "\(stage.label), \(manager.compactLabel())")
+    }
+}
+
+private enum MenuBarCountdownStage {
+    case idle
+    case running
+    case warning
+    case finalSeconds
+
+    var color: NSColor {
+        switch self {
+        case .idle: return .secondaryLabelColor
+        case .running: return .systemGreen
+        case .warning: return .systemOrange
+        case .finalSeconds: return .systemRed
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .idle: return "Idle"
+        case .running: return "Running"
+        case .warning: return "Warning"
+        case .finalSeconds: return "Final 5 seconds"
+        }
     }
 }
 
 private enum MenuBarRingImage {
     @MainActor
-    static func make(progress: Double? = nil) -> NSImage {
+    static func make(progress: Double? = nil, color: NSColor = .secondaryLabelColor) -> NSImage {
         let size = NSSize(width: 16, height: 16)
         let image = NSImage(size: size, flipped: false) { _ in
             let ringRect = NSRect(x: 2, y: 2, width: 12, height: 12)
             let background = NSBezierPath(ovalIn: ringRect)
-            background.lineWidth = 2
-            NSColor.black.withAlphaComponent(progress == nil ? 1 : 0.28).setStroke()
+            background.lineWidth = 2.75
+            color.withAlphaComponent(progress == nil ? 0.8 : 0.42).setStroke()
             background.stroke()
 
             if let progress, progress > 0 {
                 let arc = NSBezierPath()
-                arc.lineWidth = 2
+                arc.lineWidth = 2.75
                 arc.lineCapStyle = .round
                 arc.appendArc(
                     withCenter: NSPoint(x: 8, y: 8),
@@ -118,12 +148,12 @@ private enum MenuBarRingImage {
                     endAngle: 90 - 360 * min(max(progress, 0), 1),
                     clockwise: true
                 )
-                NSColor.black.setStroke()
+                color.setStroke()
                 arc.stroke()
             }
             return true
         }
-        image.isTemplate = true
+        image.isTemplate = false
         return image
     }
 }
