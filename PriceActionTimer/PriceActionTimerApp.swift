@@ -61,11 +61,11 @@ private struct MenuBarCountdownIcon: View {
     var body: some View {
         if let profile = timerStore.selectedProfile,
            let manager = timerStore.manager(for: profile.id) {
-            MenuBarCountdownRing(manager: manager)
+            MenuBarCountdownCircle(manager: manager)
         } else {
-            Image(nsImage: MenuBarRingImage.make())
+            Image(nsImage: MenuBarCircleImage.make())
                 .resizable()
-                .renderingMode(.template)
+                .renderingMode(.original)
                 .frame(width: 16, height: 16)
                 .accessibilityLabel("PriceAction Timer")
                 .accessibilityValue("No enabled timer")
@@ -73,7 +73,7 @@ private struct MenuBarCountdownIcon: View {
     }
 }
 
-private struct MenuBarCountdownRing: View {
+private struct MenuBarCountdownCircle: View {
     @ObservedObject var manager: TimerManager
 
     private var remainingProgress: Double {
@@ -89,7 +89,7 @@ private struct MenuBarCountdownRing: View {
     }
 
     var body: some View {
-        Image(nsImage: MenuBarRingImage.make(
+        Image(nsImage: MenuBarCircleImage.make(
             progress: manager.phase == .idle ? nil : remainingProgress,
             color: stage.color
         ))
@@ -110,7 +110,7 @@ private enum MenuBarCountdownStage {
     var color: NSColor {
         switch self {
         case .idle: return .secondaryLabelColor
-        case .running: return .systemGreen
+        case .running: return .systemBlue
         case .warning: return .systemOrange
         case .finalSeconds: return .systemRed
         }
@@ -126,30 +126,32 @@ private enum MenuBarCountdownStage {
     }
 }
 
-private enum MenuBarRingImage {
+private enum MenuBarCircleImage {
     @MainActor
     static func make(progress: Double? = nil, color: NSColor = .secondaryLabelColor) -> NSImage {
         let size = NSSize(width: 16, height: 16)
         let image = NSImage(size: size, flipped: false) { _ in
-            let ringRect = NSRect(x: 2, y: 2, width: 12, height: 12)
-            let background = NSBezierPath(ovalIn: ringRect)
-            background.lineWidth = 2.75
-            color.withAlphaComponent(progress == nil ? 0.8 : 0.42).setStroke()
+            let circleRect = NSRect(x: 1.5, y: 1.5, width: 13, height: 13)
+            let background = NSBezierPath(ovalIn: circleRect)
+            color.withAlphaComponent(progress == nil ? 0.72 : 0.35).setFill()
+            background.fill()
+            background.lineWidth = 1
+            color.withAlphaComponent(0.95).setStroke()
             background.stroke()
 
             if let progress, progress > 0 {
-                let arc = NSBezierPath()
-                arc.lineWidth = 2.75
-                arc.lineCapStyle = .round
-                arc.appendArc(
+                let sector = NSBezierPath()
+                sector.move(to: NSPoint(x: 8, y: 8))
+                sector.appendArc(
                     withCenter: NSPoint(x: 8, y: 8),
-                    radius: 6,
+                    radius: 6.5,
                     startAngle: 90,
                     endAngle: 90 - 360 * min(max(progress, 0), 1),
                     clockwise: true
                 )
-                color.setStroke()
-                arc.stroke()
+                sector.close()
+                color.setFill()
+                sector.fill()
             }
             return true
         }
