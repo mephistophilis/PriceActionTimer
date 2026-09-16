@@ -76,9 +76,10 @@ private struct MenuBarCountdownIcon: View {
 private struct MenuBarCountdownCircle: View {
     @ObservedObject var manager: TimerManager
 
-    private var remainingProgress: Double {
+    private var elapsedProgress: Double {
         guard manager.phase != .idle, manager.cycleDuration > 0 else { return 0 }
-        return min(max(manager.remainingTime / manager.cycleDuration, 0), 1)
+        let remaining = min(max(manager.remainingTime / manager.cycleDuration, 0), 1)
+        return 1 - remaining
     }
 
     private var stage: MenuBarCountdownStage {
@@ -90,7 +91,7 @@ private struct MenuBarCountdownCircle: View {
 
     var body: some View {
         Image(nsImage: MenuBarCircleImage.make(
-            progress: manager.phase == .idle ? nil : remainingProgress,
+            progress: manager.phase == .idle ? nil : elapsedProgress,
             color: stage.color
         ))
             .resizable()
