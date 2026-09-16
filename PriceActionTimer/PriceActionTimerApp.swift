@@ -110,7 +110,7 @@ private enum MenuBarCountdownStage {
     var color: NSColor {
         switch self {
         case .idle: return .secondaryLabelColor
-        case .running: return .systemBlue
+        case .running: return NSColor(srgbRed: 6 / 255, green: 124 / 255, blue: 253 / 255, alpha: 1)
         case .warning: return .systemOrange
         case .finalSeconds: return .systemRed
         }
@@ -133,10 +133,10 @@ private enum MenuBarCircleImage {
         let image = NSImage(size: size, flipped: false) { _ in
             let circleRect = NSRect(x: 1.5, y: 1.5, width: 13, height: 13)
             let background = NSBezierPath(ovalIn: circleRect)
-            color.withAlphaComponent(progress == nil ? 0.72 : 0.35).setFill()
+            NSColor.white.withAlphaComponent(0.96).setFill()
             background.fill()
-            background.lineWidth = 1
-            color.withAlphaComponent(0.95).setStroke()
+            background.lineWidth = 1.75
+            color.setStroke()
             background.stroke()
 
             if let progress, progress > 0 {
