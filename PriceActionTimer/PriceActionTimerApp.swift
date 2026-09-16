@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 @main
 struct PriceActionTimerApp: App {
@@ -60,8 +63,9 @@ private struct MenuBarCountdownIcon: View {
            let manager = timerStore.manager(for: profile.id) {
             MenuBarCountdownRing(manager: manager)
         } else {
-            Circle()
-                .stroke(.secondary.opacity(0.55), lineWidth: 2)
+            Image(nsImage: MenuBarRingImage.make())
+                .resizable()
+                .renderingMode(.template)
                 .frame(width: 16, height: 16)
                 .accessibilityLabel("PriceAction Timer")
                 .accessibilityValue("No enabled timer")
@@ -82,23 +86,49 @@ private struct MenuBarCountdownRing: View {
     }
 
     var body: some View {
-        ZStack {
-            Circle()
-                .stroke(.secondary.opacity(0.35), lineWidth: 2)
-            Circle()
-                .trim(from: 0, to: remainingProgress)
-                .stroke(progressColor, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                .rotationEffect(.degrees(-90))
+        Image(nsImage: MenuBarRingImage.make(progress: manager.phase == .idle ? nil : remainingProgress))
+            .resizable()
+            .renderingMode(.template)
+            .foregroundStyle(progressColor)
+            .frame(width: 16, height: 16)
+            .accessibilityLabel("PriceAction Timer")
+            .accessibilityValue(manager.phase == .idle ? "Idle" : manager.compactLabel())
+    }
+}
+
+private enum MenuBarRingImage {
+    @MainActor
+    static func make(progress: Double? = nil) -> NSImage {
+        let size = NSSize(width: 16, height: 16)
+        let image = NSImage(size: size, flipped: false) { _ in
+            let ringRect = NSRect(x: 2, y: 2, width: 12, height: 12)
+            let background = NSBezierPath(ovalIn: ringRect)
+            background.lineWidth = 2
+            NSColor.black.withAlphaComponent(progress == nil ? 1 : 0.28).setStroke()
+            background.stroke()
+
+            if let progress, progress > 0 {
+                let arc = NSBezierPath()
+                arc.lineWidth = 2
+                arc.lineCapStyle = .round
+                arc.appendArc(
+                    withCenter: NSPoint(x: 8, y: 8),
+                    radius: 6,
+                    startAngle: 90,
+                    endAngle: 90 - 360 * min(max(progress, 0), 1),
+                    clockwise: true
+                )
+                NSColor.black.setStroke()
+                arc.stroke()
+            }
+            return true
         }
-        .frame(width: 16, height: 16)
-        .accessibilityLabel("PriceAction Timer")
-        .accessibilityValue(manager.phase == .idle ? "Idle" : manager.compactLabel())
+        image.isTemplate = true
+        return image
     }
 }
 
 #if os(macOS)
-import AppKit
-
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !PriceActionTimerApp.isTesting else { return }
