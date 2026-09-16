@@ -88,19 +88,23 @@ struct TimerStoreTests {
         #expect(fixture.storage.loadProfiles() == fixture.store.profiles)
     }
 
-    @Test func addingAndEnablingProfilesKeepsOnlyOneEnabled() throws {
+    @Test func newProfilesStartDisabledAndEnablingKeepsOnlyOneEnabled() throws {
         let fixture = Fixture()
         defer { fixture.close() }
         let firstID = fixture.store.profiles[0].id
 
         fixture.store.addProfile()
         let secondID = try #require(fixture.store.profiles.last?.id)
+        #expect(fixture.store.profiles.first { $0.id == firstID }?.isEnabled == true)
+        #expect(fixture.store.profiles.first { $0.id == secondID }?.isEnabled == false)
+        #expect(fixture.store.selectedProfileID == firstID)
+
+        fixture.store.enableProfile(secondID)
         #expect(fixture.store.profiles.first { $0.id == firstID }?.isEnabled == false)
         #expect(fixture.store.profiles.first { $0.id == secondID }?.isEnabled == true)
+        #expect(fixture.store.selectedProfileID == secondID)
 
-        var first = try #require(fixture.store.profiles.first { $0.id == firstID })
-        first.isEnabled = true
-        fixture.store.updateProfile(first)
+        fixture.store.enableProfile(firstID)
         #expect(fixture.store.profiles.first { $0.id == firstID }?.isEnabled == true)
         #expect(fixture.store.profiles.first { $0.id == secondID }?.isEnabled == false)
         #expect(fixture.store.profiles.filter(\.isEnabled).map(\.id) == [firstID])
@@ -131,10 +135,7 @@ struct TimerStoreTests {
         let first = fixture.store.profiles[0]
         fixture.store.addProfile()
         let second = fixture.store.profiles[1]
-        fixture.store.selectedProfileID = first.id
-        var disabled = first
-        disabled.isEnabled = false
-        fixture.store.updateProfile(disabled)
+        fixture.store.enableProfile(second.id)
         #expect(fixture.store.manager(for: first.id)?.phase == .idle)
         #expect(fixture.store.selectedProfileID == second.id)
         #expect(fixture.storage.selectedProfileID == second.id)
@@ -169,7 +170,8 @@ struct TimerStoreTests {
         #expect(restored.profiles.isEmpty)
         restored.addProfile()
         #expect(restored.profiles.count == 1)
-        #expect(restored.selectedProfileID == restored.profiles.first?.id)
+        #expect(restored.profiles.first?.isEnabled == false)
+        #expect(restored.selectedProfileID == nil)
     }
 
     @Test func deletingAllTimersDoesNotCreateAReplacement() {
@@ -227,9 +229,9 @@ struct TimerStoreTests {
         defer { fixture.close() }
         fixture.store.addProfile()
         let savedData = try #require(fixture.defaults.data(forKey: "com.m.PriceActionTimer.profiles"))
-        fixture.store.selectedProfileID = fixture.store.profiles[0].id
+        fixture.store.selectedProfileID = fixture.store.profiles[1].id
         #expect(fixture.defaults.data(forKey: "com.m.PriceActionTimer.profiles") == savedData)
-        #expect(fixture.storage.selectedProfileID == fixture.store.profiles[1].id)
+        #expect(fixture.storage.selectedProfileID == fixture.store.profiles[0].id)
     }
 
     @Test(arguments: ["stop", "disable", "delete"], ["2026-09-02T09:30:50Z", "2026-09-02T09:30:55Z"])
@@ -296,6 +298,7 @@ struct TimerStoreTests {
         var second = try #require(fixture.store.profiles.last)
         second.timezoneIdentifier = "UTC"
         fixture.store.updateProfile(second)
+        fixture.store.enableProfile(second.id)
         #expect(fixture.store.manager(for: fixture.store.profiles[0].id)?.phase == .idle)
         #expect(fixture.store.manager(for: second.id)?.phase == .warning)
         fixture.store.refresh()

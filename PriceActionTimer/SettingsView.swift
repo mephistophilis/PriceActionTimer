@@ -26,7 +26,14 @@ struct SettingsView: View {
                         profile: profile,
                         isEnabled: profile.isEnabled
                     )
+                    .contentShape(Rectangle())
                     .tag(profile.id)
+                    .highPriorityGesture(
+                        TapGesture(count: 2).onEnded {
+                            selection = profile.id
+                            timerStore.enableProfile(profile.id)
+                        }
+                    )
                     .contextMenu {
                         Button {
                             cloneTimer(profileID: profile.id)

@@ -86,6 +86,7 @@ struct CountdownOverlayTests {
         var added = try #require(fixture.store.profiles.last)
         added.timezoneIdentifier = "UTC"
         fixture.store.updateProfile(added)
+        fixture.store.enableProfile(added.id)
         try await settle()
         #expect(fixture.overlay.entries.map(\.id) == [added.id.uuidString])
         fixture.clock.date = date("2026-09-02T09:30:51Z")

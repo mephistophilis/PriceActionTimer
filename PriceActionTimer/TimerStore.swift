@@ -66,9 +66,8 @@ final class TimerStore: ObservableObject {
     }
 
     func addProfile() {
-        let profile = TimerProfile(cycleDuration: 60, warningLeadTime: 10)
-        setProfiles(profiles + [profile], preferredEnabledID: profile.id)
-        selectedProfileID = profile.id
+        let profile = TimerProfile(cycleDuration: 60, warningLeadTime: 10, isEnabled: false)
+        setProfiles(profiles + [profile])
     }
 
     @discardableResult
@@ -93,6 +92,14 @@ final class TimerStore: ObservableObject {
         var updated = profiles
         updated[index] = profile.normalized()
         setProfiles(updated, preferredEnabledID: profile.isEnabled ? profile.id : nil)
+    }
+
+    func enableProfile(_ id: UUID) {
+        guard let index = profiles.firstIndex(where: { $0.id == id }),
+              !profiles[index].isEnabled else { return }
+        var updated = profiles
+        updated[index].isEnabled = true
+        setProfiles(updated, preferredEnabledID: id)
     }
 
     func removeProfiles(at offsets: IndexSet) {
