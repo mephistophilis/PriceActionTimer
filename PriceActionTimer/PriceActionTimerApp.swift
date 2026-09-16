@@ -147,8 +147,8 @@ private enum MenuBarCircleImage {
                     withCenter: NSPoint(x: 9.5, y: 9.5),
                     radius: 8.5,
                     startAngle: 90,
-                    endAngle: 90 - 360 * min(max(progress, 0), 1),
-                    clockwise: true
+                    endAngle: 90 + 360 * min(max(progress, 0), 1),
+                    clockwise: false
                 )
                 sector.close()
                 color.setFill()
